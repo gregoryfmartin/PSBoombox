@@ -882,6 +882,42 @@ Class MMMediaPlayer {
         }
     }
 
+    [Single[]]GetSpectrumSnapshot(
+        [Int]$BarCount
+    ) {
+        If(($BarCount -LE 0)) {
+            Return [Single[]]::new(0)
+        }
+
+        If(($this.IsPlaying() -EQ $false) -OR ($this.IsMuted -EQ $true) -OR ($this.UsesNativeEngine -EQ $false) -OR ($null -EQ $this.NativeEngine)) {
+            Return [Single[]]::new($BarCount)
+        }
+
+        Return $this.NativeEngine.GetSpectrumSnapshot($BarCount)
+    }
+
+    [Single[]]GetWaveformSnapshot(
+        [Int]$SampleCount
+    ) {
+        If(($SampleCount -LE 0)) {
+            Return [Single[]]::new(0)
+        }
+
+        If(($this.IsPlaying() -EQ $false) -OR ($this.IsMuted -EQ $true) -OR ($this.UsesNativeEngine -EQ $false) -OR ($null -EQ $this.NativeEngine)) {
+            Return [Single[]]::new($SampleCount)
+        }
+
+        Return $this.NativeEngine.GetWaveformSnapshot($SampleCount)
+    }
+
+    [Single[]]GetAudioMetrics() {
+        If(($this.IsPlaying() -EQ $false) -OR ($this.IsMuted -EQ $true) -OR ($this.UsesNativeEngine -EQ $false) -OR ($null -EQ $this.NativeEngine)) {
+            Return [Single[]]::new(5)
+        }
+
+        Return $this.NativeEngine.GetAudioMetrics()
+    }
+
     [Void]Dispose() {
         $this.CloseCurrentAlias()
 

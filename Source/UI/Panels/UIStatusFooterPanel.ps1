@@ -35,7 +35,7 @@ Class UIStatusFooterPanel : UIPanel {
             $this.MaxTextWidth
         )
 
-        [String]$HintText = '[Tab] Pane [Spc] Play [A] Add [G] Dir [W] Save [E] EQ [+/-] Vol [Q] Quit'
+        [String]$HintText = '[Tab] Pane [Spc] Play [A] Add [G] Dir [W] Save [E] EQ [V] Viz [+/-] [Q] Quit'
         $this.HintLabel   = [UILabel]::new(
             $HintText,
             [ATCoordinates]::new(($StartRow + 1), 2),

@@ -30,6 +30,12 @@ Class BoomboxCore : AppCore {
     [UIPlaylistPanel]$PlaylistPanel
     [UIPathInputModal]$PathModal
     [UIEqualizerModal]$EqualizerModal
+    [UINoticeModal]$NoticeModal
+    [UIVisualizerCanvas]$VisualizerCanvas
+    [List[UIVisualizerBase]]$Visualizers
+    [Int]$ActiveVisualizerIndex
+    [UILabel]$VisualizerTrackLabel
+    [UILabel]$VisualizerHintLabel
     [UIStatusFooterPanel]$FooterPanel
     [BoomboxFocusZone]$ActiveFocusZone
     [Boolean]$AutoFocusPlaylistOnStart
@@ -90,12 +96,23 @@ Class BoomboxCore : AppCore {
         [Int]$BottomEndRow  = $this.LayoutHeight - 2
         [Int]$LeftPaneWidth = [Int][Math]::Floor($this.LayoutWidth / 2)
 
-        $this.PlaybackPanel  = [UIPlaybackControlPanel]::new($this.LayoutWidth)
-        $this.DirectoryPanel = [UIDirectoryBrowserPanel]::new($BottomTopRow, $BottomEndRow, 1, $LeftPaneWidth)
-        $this.PlaylistPanel  = [UIPlaylistPanel]::new($BottomTopRow, $BottomEndRow, ($LeftPaneWidth + 1), $this.LayoutWidth)
-        $this.PathModal      = [UIPathInputModal]::new($this.LayoutWidth, $this.LayoutHeight)
-        $this.EqualizerModal = [UIEqualizerModal]::new($this.LayoutWidth, $this.LayoutHeight)
-        $this.FooterPanel    = [UIStatusFooterPanel]::new(($this.LayoutHeight - 1), $this.LayoutWidth)
+        $this.PlaybackPanel        = [UIPlaybackControlPanel]::new($this.LayoutWidth)
+        $this.DirectoryPanel       = [UIDirectoryBrowserPanel]::new($BottomTopRow, $BottomEndRow, 1, $LeftPaneWidth)
+        $this.PlaylistPanel        = [UIPlaylistPanel]::new($BottomTopRow, $BottomEndRow, ($LeftPaneWidth + 1), $this.LayoutWidth)
+        $this.PathModal            = [UIPathInputModal]::new($this.LayoutWidth, $this.LayoutHeight)
+        $this.EqualizerModal       = [UIEqualizerModal]::new($this.LayoutWidth, $this.LayoutHeight)
+        $this.NoticeModal          = [UINoticeModal]::new($this.LayoutWidth, $this.LayoutHeight)
+        $this.VisualizerCanvas     = [UIVisualizerCanvas]::new($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 2)), 1, 1)
+        $this.Visualizers          = [List[UIVisualizerBase]]::new()
+        $this.Visualizers.Add([UIVisualizerSpectrum]::new())
+        $this.Visualizers.Add([UIVisualizerMirror]::new())
+        $this.Visualizers.Add([UIVisualizerOscilloscope]::new())
+        $this.Visualizers.Add([UIVisualizerRadialPulse]::new())
+        $this.Visualizers.Add([UIVisualizerWaterfall]::new())
+        $this.ActiveVisualizerIndex = 0
+        $this.VisualizerTrackLabel  = [UILabel]::new('', [ATCoordinates]::new(($this.LayoutHeight - 1), 2), [ColorLibrary]::BoomboxVizTrackLabel, [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.VisualizerHintLabel   = [UILabel]::new('[Tab] Next Viz [V] Exit [Spc] Play/Pause [N/P] Track [+/-] Vol [M] Mute', [ATCoordinates]::new($this.LayoutHeight, 2), [ColorLibrary]::BoomboxVizHint, [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.FooterPanel           = [UIStatusFooterPanel]::new(($this.LayoutHeight - 1), $this.LayoutWidth)
 
         [BoomboxCore]$SelfCore = $this
 
@@ -289,6 +306,8 @@ Class BoomboxCore : AppCore {
             [PBStateDirectoryPrompt]::new(),
             [PBStatePlaylistSavePrompt]::new(),
             [PBStateEqualizer]::new(),
+            [PBStateNoticeModal]::new(),
+            [PBStateVisualizer]::new(),
             [PBStateShutdown]::new()
         ))
 
@@ -301,6 +320,12 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStatePlaylistSavePrompt', 'CloseSavePlaylistPrompt', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenEqualizer', 'PBStateEqualizer'),
             [SMTransition]::new('PBStateEqualizer', 'CloseEqualizer', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateMainPlayer', 'OpenNoticeModal', 'PBStateNoticeModal'),
+            [SMTransition]::new('PBStateNoticeModal', 'CloseNoticeModal', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateMainPlayer', 'OpenVisualizer', 'PBStateVisualizer'),
+            [SMTransition]::new('PBStateVisualizer', 'CloseVisualizer', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateVisualizer', 'VisualizerToNoticeModal', 'PBStateNoticeModal'),
+            [SMTransition]::new('PBStateVisualizer', 'Quit', 'PBStateShutdown'),
             [SMTransition]::new('PBStateMainPlayer', 'Quit', 'PBStateShutdown')
         ))
     }
@@ -805,6 +830,73 @@ Class BoomboxCore : AppCore {
         $this.PlaylistPanel.SyncFromPlaylist($this.Playlist, -1)
         $this.SyncAllPanelsFromState()
         $this.FooterPanel.SetStatus('Cleared playlist')
+    }
+
+    [UIVisualizerBase]GetActiveVisualizer() {
+        If(($this.Visualizers.Count -EQ 0) -OR ($this.ActiveVisualizerIndex -LT 0) -OR ($this.ActiveVisualizerIndex -GE $this.Visualizers.Count)) {
+            Return $null
+        }
+
+        Return $this.Visualizers[$this.ActiveVisualizerIndex]
+    }
+
+    [Void]CycleVisualizerForward() {
+        If($this.Visualizers.Count -EQ 0) {
+            Return
+        }
+
+        $this.ActiveVisualizerIndex = ($this.ActiveVisualizerIndex + 1) % $this.Visualizers.Count
+
+        $this.VisualizerCanvas.InvalidateAll()
+
+        [UIVisualizerBase]$ActiveViz = $this.GetActiveVisualizer()
+
+        If($null -NE $ActiveViz) {
+            $ActiveViz.Reset()
+        }
+    }
+
+    [Void]SyncVisualizerTrackLabel() {
+        [MMTrackInfo]$Track = $this.MediaPlayer.CurrentTrack
+        [String]$TrackTitle = ($null -NE $Track) ? $Track.DisplayName : ''
+
+        If($this.VisualizerTrackLabel.UserData.TrimEnd() -NE (Format-TruncatedText $TrackTitle $this.VisualizerTrackLabel.MaxWidth)) {
+            $this.VisualizerTrackLabel.SetText($TrackTitle)
+        }
+    }
+
+    [Void]OpenMidiVisualizerNotice(
+        [Context]$Context,
+        [String]$TransitionName
+    ) {
+        $this.NoticeModal.Configure(
+            'Visualizer Unavailable',
+            @(
+                'Visualizer Mode cannot be used during MIDI playback.',
+                'MIDI files are synthesized via Windows MCI and do not',
+                'produce decodable PCM audio buffers.'
+            ),
+            'OK'
+        )
+        $this.AppState.Trigger($TransitionName, $Context)
+    }
+
+    [Void]TryOpenVisualizer(
+        [Context]$Context
+    ) {
+        If($this.MediaPlayer.IsPlaying() -EQ $false) {
+            $this.FooterPanel.SetStatus('Start playing an audio track to enter Visualizer Mode.')
+
+            Return
+        }
+
+        If($this.MediaPlayer.IsEqualizerBypassedForCurrentTrack() -EQ $true) {
+            $this.OpenMidiVisualizerNotice($Context, 'OpenNoticeModal')
+
+            Return
+        }
+
+        $this.AppState.Trigger('OpenVisualizer', $Context)
     }
 
     [Void]Cleanup() {

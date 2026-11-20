@@ -288,6 +288,57 @@ Class ColorLibrary {
     Static [TrueColor]$BoomboxEqSliderZero          = [ColorLibrary]::GhostWhite
     Static [TrueColor]$BoomboxEqSliderTrack         = [ColorLibrary]::DarkSlateGrey
     Static [TrueColor]$BoomboxEqSliderFocused       = [ColorLibrary]::AppleYellowLight
+    Static [TrueColor]$BoomboxVizTrackLabel           = [ColorLibrary]::GhostWhite
+    Static [TrueColor]$BoomboxVizHint                 = [ColorLibrary]::LightSlateGrey
+    Static [TrueColor]$BoomboxVizPeakCap              = [ColorLibrary]::White
+    Static [TrueColor]$BoomboxVizAxis                 = [ColorLibrary]::DarkSlateGrey
+    Static [TrueColor[]]$BoomboxVizSpectrumGradient  = @(
+        [ColorLibrary]::DeepSkyBlue,
+        [ColorLibrary]::AppleCyanLight,
+        [ColorLibrary]::AppleMintLight,
+        [ColorLibrary]::AppleGreenLight,
+        [ColorLibrary]::YellowGreen,
+        [ColorLibrary]::AppleYellowLight,
+        [ColorLibrary]::AppleOrangeLight,
+        [ColorLibrary]::AppleRedLight
+    )
+    Static [TrueColor[]]$BoomboxVizMirrorGradient    = @(
+        [ColorLibrary]::AppleBlueLight,
+        [ColorLibrary]::AppleCyanLight,
+        [ColorLibrary]::AppleMintLight,
+        [ColorLibrary]::AppleIndigoLight,
+        [ColorLibrary]::ApplePurpleLight,
+        [ColorLibrary]::MediumOrchid,
+        [ColorLibrary]::ApplePinkLight,
+        [ColorLibrary]::HotPink
+    )
+    Static [TrueColor[]]$BoomboxVizScopeGradient     = @(
+        [ColorLibrary]::AppleCyanLight,
+        [ColorLibrary]::AppleMintLight,
+        [ColorLibrary]::AppleGreenLight,
+        [ColorLibrary]::AppleYellowLight
+    )
+    Static [TrueColor[]]$BoomboxVizRadialGradient    = @(
+        [ColorLibrary]::AppleIndigoDark,
+        [ColorLibrary]::AppleBlueLight,
+        [ColorLibrary]::AppleCyanLight,
+        [ColorLibrary]::AppleMintLight,
+        [ColorLibrary]::AppleYellowLight,
+        [ColorLibrary]::AppleOrangeLight,
+        [ColorLibrary]::ApplePinkLight,
+        [ColorLibrary]::White
+    )
+    Static [TrueColor[]]$BoomboxVizWaterfallGradient = @(
+        [ColorLibrary]::Black,
+        [ColorLibrary]::MidnightBlue,
+        [ColorLibrary]::DarkSlateBlue,
+        [ColorLibrary]::AppleBlueLight,
+        [ColorLibrary]::AppleCyanLight,
+        [ColorLibrary]::AppleMintLight,
+        [ColorLibrary]::AppleYellowLight,
+        [ColorLibrary]::AppleOrangeLight,
+        [ColorLibrary]::AppleRedLight
+    )
 
     Static [TrueColor]GetRandom() {
         Return [TrueColor]::new(

@@ -29,6 +29,7 @@ Class AppCore {
     [Janitor]$Janitor
     [Int]$TargetFps
     [Double]$TargetFrameTime
+    [Boolean]$HighResTimerActive
     [Stopwatch]$Sw
     [Double]$LastTime
     [SMStateMachine]$AppState
@@ -41,6 +42,7 @@ Class AppCore {
         $this.IsHeadlessMode     = ([Console]::IsInputRedirected -EQ $true) -OR ([Console]::IsOutputRedirected -EQ $true)
         $this.TargetFps          = 30
         $this.TargetFrameTime    = 1.0 / $this.TargetFps
+        $this.HighResTimerActive = $false
         $this.Sw                 = [Stopwatch]::new()
         $this.LastTime           = 0.0
         $this.BufferSpec         = [BufferSpecDefinition]::new()
@@ -53,6 +55,23 @@ Class AppCore {
     }
 
     [Void]InitializeStates() {}
+
+    [Void]SetTargetFps(
+        [Int]$Fps
+    ) {
+        [Int]$Clamped         = [Math]::Clamp($Fps, 10, 120)
+        $this.TargetFps       = $Clamped
+        $this.TargetFrameTime = 1.0 / [Double]$Clamped
+
+        If($this.IsHeadlessMode -EQ $false) {
+            If(($Clamped -GE 50) -AND ($this.HighResTimerActive -EQ $false)) {
+                $this.HighResTimerActive = [MMWinMMNative]::BeginHighResTimer([UInt32]1)
+            } Elseif(($Clamped -LT 50) -AND ($this.HighResTimerActive -EQ $true)) {
+                $null                    = [MMWinMMNative]::EndHighResTimer([UInt32]1)
+                $this.HighResTimerActive = $false
+            }
+        }
+    }
 
     [Void]EnqueueSyntheticKey(
         [ConsoleKeyInfo]$KeyInfo
@@ -72,7 +91,7 @@ Class AppCore {
                         $InputQueue.Enqueue([Console]::ReadKey($true))
                     }
 
-                    Start-Sleep -Milliseconds 16
+                    Start-Sleep -Milliseconds 8
                 }
             })
             $this.InputPowerShell.Runspace = $this.InputRunspace
@@ -113,6 +132,8 @@ Class AppCore {
         Try {
             $this.Setup()
 
+            [Double]$NextFrameTarget = $this.Sw.Elapsed.TotalSeconds
+
             While($this.IsRunning -EQ $true) {
                 [Double]$CurrentTime = $this.Sw.Elapsed.TotalSeconds
                 [Double]$Dt          = $CurrentTime - $this.LastTime
@@ -120,11 +141,33 @@ Class AppCore {
 
                 $this.Logic($Dt)
 
-                [Double]$FrameWorkTime    = $this.Sw.Elapsed.TotalSeconds - $CurrentTime
-                [Double]$SleepTimeSeconds = $this.TargetFrameTime - $FrameWorkTime
+                $NextFrameTarget      += $this.TargetFrameTime
+                [Double]$NowAfterWork  = $this.Sw.Elapsed.TotalSeconds
 
-                If($SleepTimeSeconds -GT 0.0) {
-                    [Thread]::Sleep([Int]($SleepTimeSeconds * 1000.0))
+                If($NextFrameTarget -LT $NowAfterWork) {
+                    $NextFrameTarget = $NowAfterWork
+                }
+
+                [Double]$RemainingSeconds = $NextFrameTarget - $NowAfterWork
+
+                If($RemainingSeconds -GT 0.0) {
+                    If($this.TargetFps -GE 50) {
+                        [Int]$SleepMs = [Int][Math]::Floor(($RemainingSeconds - 0.002) * 1000.0)
+
+                        If($SleepMs -GE 1) {
+                            [Thread]::Sleep($SleepMs)
+                        }
+
+                        While(($this.Sw.Elapsed.TotalSeconds -LT $NextFrameTarget) -AND ($this.IsRunning -EQ $true)) {
+                            [Thread]::SpinWait(64)
+                        }
+                    } Else {
+                        [Int]$SleepMs = [Int][Math]::Floor($RemainingSeconds * 1000.0)
+
+                        If($SleepMs -GE 1) {
+                            [Thread]::Sleep($SleepMs)
+                        }
+                    }
                 }
             }
         } Finally {
@@ -133,6 +176,16 @@ Class AppCore {
     }
 
     [Void]Cleanup() {
+        If($this.HighResTimerActive -EQ $true) {
+            Try {
+                $null = [MMWinMMNative]::EndHighResTimer([UInt32]1)
+            } Catch {
+                # IGNORE TIMER RESTORE ERRORS ON DISPOSE
+            }
+
+            $this.HighResTimerActive = $false
+        }
+
         If($null -NE $this.InputPowerShell) {
             Try {
                 $this.InputPowerShell.Stop()

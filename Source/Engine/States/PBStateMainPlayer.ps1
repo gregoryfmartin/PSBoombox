@@ -100,6 +100,18 @@ Class PBStateMainPlayer : SMState {
                         Break
                     }
 
+                    If($KeyInfo.Key -EQ [ConsoleKey]::V) {
+                        $Core.TryOpenVisualizer($Context)
+
+                        If($Core.AppState.CurrentState -NE 'PBStateMainPlayer') {
+                            $DidTransition = $true
+
+                            Break
+                        }
+
+                        Continue
+                    }
+
                     If($KeyInfo.Key -EQ [ConsoleKey]::Tab) {
                         [Boolean]$Reverse = (($KeyInfo.Modifiers -BAND [ConsoleModifiers]::Shift) -EQ [ConsoleModifiers]::Shift)
                         $Core.CycleFocusZone($Reverse, $Context)

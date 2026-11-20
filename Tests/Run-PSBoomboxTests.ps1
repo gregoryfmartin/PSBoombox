@@ -543,6 +543,266 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $CfgTemp -Recurse -Force -ErrorAction Stop
         }
     }
+
+    & $InvokeCase -Name 'Visualizer FFT Analysis and Post-EQ Reactivity' -Body {
+        [Int]$SampleRate = 44100
+        [Int]$Frames     = 2048
+
+        [Func[Double, Single[]]]$MakeTone = {
+            Param([Double]$FreqHz)
+            [Single[]]$Buf = [Single[]]::new($Frames * 2)
+            For([Int]$I = 0; $I -LT $Frames; $I++) {
+                [Single]$Val = [Single](0.30 * [Math]::Sin((2.0 * [Math]::PI * $FreqHz * $I) / $SampleRate))
+                $Buf[($I * 2)]     = $Val
+                $Buf[($I * 2) + 1] = $Val
+            }
+            Return $Buf
+        }
+
+        [Single[]]$BassTone   = $MakeTone.Invoke(100.0)
+        [Single[]]$TrebleTone = $MakeTone.Invoke(4000.0)
+        [Double[]]$FlatBands  = [Double[]]@(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        [Double[]]$Boost125Hz = [Double[]]@(0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+        [Single[]]$BassSpec = [MMEqualizerEngineNative]::AnalyzeBufferForTest($BassTone, $SampleRate, 2, 16, $false, 0.0, $FlatBands)
+        Assert-Equal $BassSpec.Length 16 'Spectrum snapshot must return requested bar count'
+        Assert-True ($BassSpec[3] -GT ($BassSpec[12] + 0.3)) "100 Hz bass sine must peak in low bins ($($BassSpec[3]) vs high $($BassSpec[12]))"
+
+        [Single[]]$TrebleSpec = [MMEqualizerEngineNative]::AnalyzeBufferForTest($TrebleTone, $SampleRate, 2, 16, $false, 0.0, $FlatBands)
+        Assert-True ($TrebleSpec[12] -GT ($TrebleSpec[2] + 0.3)) "4 kHz treble sine must peak in bin 12 (3.3-4.9 kHz) ($($TrebleSpec[12]) vs low $($TrebleSpec[2]))"
+
+        [Single[]]$EqBoostedSpec = [MMEqualizerEngineNative]::AnalyzeBufferForTest($BassTone, $SampleRate, 2, 16, $true, 0.0, $Boost125Hz)
+        Assert-True ($EqBoostedSpec[3] -GT $BassSpec[3]) "Post-EQ +12 dB boost must raise FFT magnitude ($($EqBoostedSpec[3]) vs $($BassSpec[3]))"
+    }
+
+    & $InvokeCase -Name 'Visualizer Mode FSM, MIDI Modal, Forward Tab Cycling, and Auto-Exit' -Body {
+        [String]$TempDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_VizTest_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $TempDir -ItemType Directory -Force
+
+        Try {
+            [String]$WavFile = Join-Path $TempDir 'synth_wave.wav'
+            [String]$MidFile = Join-Path $TempDir 'synth_midi.mid'
+            New-TestWavFile -FilePath $WavFile -DurationMs 2200
+            [File]::WriteAllBytes($MidFile, [Byte[]]@(0x4D, 0x54, 0x68, 0x64))
+
+            [BoomboxCore]$Core = [BoomboxCore]::new($TempDir, '')
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Startup must always enter Playlist Mode (PBStateMainPlayer)'
+
+            # PRESSING V WHILE STOPPED STAYS IN MAIN PLAYER WITH STATUS MESSAGE
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'V while stopped must stay in MainPlayer'
+            Assert-True ($Core.FooterPanel.StatusLabel.UserData -MATCH 'playing') 'Footer must notify user that a track must be playing'
+
+            # PRESSING V WHILE PLAYING A MIDI TRACK OPENS NOTICE MODAL
+            [MMTrackInfo]$MidiTrack = [MMTrackInfo]::new($MidFile)
+            $Core.MediaPlayer.CurrentTrack     = $MidiTrack
+            $Core.MediaPlayer.UsesNativeEngine = $false
+            $Core.MediaPlayer.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionLoad, $Core.MediaPlayer.PrepareContext())
+            $Core.MediaPlayer.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionPlayReady, $Core.MediaPlayer.PrepareContext())
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateNoticeModal' 'V during MIDI playback must open notice modal'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]13, [ConsoleKey]::Enter, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Enter dismisses MIDI notice modal back to MainPlayer'
+
+            $Core.MediaPlayer.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionStop, $Core.MediaPlayer.PrepareContext())
+
+            # PLAYING REAL WAV TRACK AND PRESSING V ENTERS VISUALIZER MODE
+            $Core.PlayTrack([MMTrackInfo]::new($WavFile))
+            Assert-True ($Core.MediaPlayer.IsPlaying()) 'WAV track should be playing before entering Visualizer'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'V during decoded audio playback must enter PBStateVisualizer'
+            Assert-Equal ($Core.VisualizerTrackLabel.UserData.TrimEnd()) 'synth_wave.wav' 'Bottom-left track label must show current track name only'
+            Assert-False ($Core.VisualizerTrackLabel.UserData.Contains('Spectrum')) 'Track label must not include visualizer name'
+            Assert-False ($Core.VisualizerTrackLabel.UserData.Contains('00:00')) 'Track label must not include elapsed time'
+
+            # FORWARD-ONLY TAB CYCLING (0 -> 1 -> 2 -> 3 -> 4 -> 0), SHIFT+TAB IGNORED
+            Assert-Equal $Core.Visualizers.Count 5 'Must initialize 5 starter visualizers'
+            Assert-Equal $Core.ActiveVisualizerIndex 0 'Visualizer starts at index 0'
+            For([Int]$Step = 1; $Step -LE 5; $Step++) {
+                $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Tab, $false, $false, $false))
+                $Core.Logic(0.033)
+                [Int]$ExpectedIdx = $Step % 5
+                Assert-Equal $Core.ActiveVisualizerIndex $ExpectedIdx "Tab step $($Step) should advance forward to $($ExpectedIdx)"
+            }
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Tab, $true, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.ActiveVisualizerIndex 0 'Shift+Tab must not reverse cycle in Visualizer Mode'
+
+            # EQ BLOCKED WHILE GLOBAL MEDIA CONTROLS WORK IN VISUALIZER MODE
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'Equalizer must not open from Visualizer Mode'
+
+            [Int]$StartVol = $Core.MediaPlayer.Volume.Value
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'+', [ConsoleKey]::Add, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'m', [ConsoleKey]::M, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.MediaPlayer.Volume.Value ([Math]::Min(100, $StartVol + 5)) 'Volume +5% must work inside Visualizer Mode'
+            Assert-True $Core.MediaPlayer.IsMuted 'Mute toggle must work inside Visualizer Mode'
+
+            # PRESSING V EXITS BACK TO MAIN PLAYER; RE-ENTERING + S STOPS AND EXITS TO MAIN PLAYER
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'V in Visualizer Mode must return to MainPlayer'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'V re-enters Visualizer Mode while playing'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'s', [ConsoleKey]::S, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True ($Core.MediaPlayer.IsStopped()) 'S must stop playback'
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Stopping playback inside Visualizer Mode must return to MainPlayer'
+
+            $Core.Cleanup()
+        } Finally {
+            Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
+        }
+    }
+
+    & $InvokeCase -Name 'Visualizer 60 FPS Pacing, High-Res Timer, and Native Render Budget' -Body {
+        Assert-True ([MMWinMMNative]::BeginHighResTimer([UInt32]1)) 'winmm timeBeginPeriod(1) should succeed'
+        Assert-True ([MMWinMMNative]::EndHighResTimer([UInt32]1)) 'winmm timeEndPeriod(1) should succeed'
+
+        [String]$TempDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_60FpsTest_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $TempDir -ItemType Directory -Force
+
+        Try {
+            [String]$WavFile = Join-Path $TempDir 'pace_test.wav'
+            New-TestWavFile -FilePath $WavFile -DurationMs 2000
+
+            [BoomboxCore]$Core = [BoomboxCore]::new($TempDir, '')
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.TargetFps 30 'Main Player must run at 30 FPS'
+
+            $Core.PlayTrack([MMTrackInfo]::new($WavFile))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'Must enter PBStateVisualizer for FPS check'
+            Assert-Equal $Core.TargetFps 60 'Visualizer Mode must switch TargetFps to 60'
+            Assert-True ($Core.TargetFrameTime -LT 0.017) "Visualizer TargetFrameTime must be < 17 ms, got $($Core.TargetFrameTime)"
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Must return to MainPlayer'
+            Assert-Equal $Core.TargetFps 30 'Exiting Visualizer Mode must restore TargetFps to 30'
+            $Core.Cleanup()
+        } Finally {
+            Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
+        }
+
+        [UIVisualizerCanvas]$Canvas = [UIVisualizerCanvas]::new(160, 48, 1, 1)
+        [Single[]]$StaticSpec       = [Single[]]::new(160)
+        [Single[]]$StaticWave       = [Single[]]::new(320)
+        [Single[]]$StaticMetrics    = [Single[]]@(0.55, 0.75, 0.70, 0.45, 0.35)
+
+        For([Int]$I = 0; $I -LT 160; $I++) {
+            $StaticSpec[$I] = [Single](0.20 + (0.70 * [Math]::Abs([Math]::Sin($I * 0.25))))
+        }
+
+        For([Int]$I = 0; $I -LT 320; $I++) {
+            $StaticWave[$I] = [Single](0.70 * [Math]::Sin($I * 0.12))
+        }
+
+        [UIVisualizerBase[]]$Visualizers = @(
+            [UIVisualizerSpectrum]::new(),
+            [UIVisualizerMirror]::new(),
+            [UIVisualizerOscilloscope]::new(),
+            [UIVisualizerRadialPulse]::new(),
+            [UIVisualizerWaterfall]::new()
+        )
+
+        [System.Diagnostics.Stopwatch]$Sw = [System.Diagnostics.Stopwatch]::new()
+
+        Foreach($Viz in $Visualizers) {
+            $Viz.Reset()
+            $Canvas.InvalidateAll()
+
+            # VERIFY SYNCHRONIZED FRAME OUTPUT AND ZERO DIFF ON IDENTICAL STEADY-STATE FRAME
+            $Viz.RenderFrame($Canvas, $StaticSpec, $StaticWave, $StaticMetrics, 0.0167)
+            [String]$FirstAnsi = $Canvas.BuildFrameAnsi($true, '')
+            Assert-True ($FirstAnsi.Contains("`e[?2026h") -AND $FirstAnsi.Contains("`e[?2026l")) "$($Viz.Name) must wrap frame in synchronized update markers"
+
+            [String]$PlainGlyphs = [Regex]::Replace($FirstAnsi, '\x1b\[[0-9;?]*[A-Za-z]', '')
+
+            If($Viz -IS [UIVisualizerSpectrum]) {
+                Assert-True ($FirstAnsi.Contains([Char]0x2581)) 'Spectrum Analyzer must emit Unicode peak cap glyph U+2581'
+                Assert-False ($PlainGlyphs.Contains('?')) 'Spectrum Analyzer rendered glyphs must not contain replacement question marks'
+            } Elseif($Viz -IS [UIVisualizerOscilloscope]) {
+                Assert-True ($FirstAnsi -MATCH '[\u2800-\u28FF]') 'Braille Oscilloscope must emit Unicode Braille glyphs U+2800-U+28FF'
+                Assert-False ($PlainGlyphs.Contains('?')) 'Braille Oscilloscope rendered glyphs must not contain replacement question marks'
+            }
+
+            If($Viz -IS [UIVisualizerWaterfall]) {
+                For([Int]$Pre = 0; $Pre -LT 96; $Pre++) {
+                    $Viz.RenderFrame($Canvas, $StaticSpec, $StaticWave, $StaticMetrics, 0.0167)
+                    $null = $Canvas.BuildFrameAnsi($true, '')
+                }
+            }
+
+            If(-NOT ($Viz -IS [UIVisualizerRadialPulse])) {
+                $Viz.RenderFrame($Canvas, $StaticSpec, $StaticWave, $StaticMetrics, 0.0167)
+                [String]$SecondAnsi = $Canvas.BuildFrameAnsi($true, '')
+                Assert-Equal $SecondAnsi.Length 0 "$($Viz.Name) unchanged frame must emit 0 diff bytes"
+            }
+
+            # BENCHMARK 15 ANIMATED FRAMES AT 160x48 (< 10.0 MS/FRAME BUDGET FOR 60 FPS)
+            $Sw.Restart()
+            For([Int]$F = 0; $F -LT 15; $F++) {
+                For([Int]$I = 0; $I -LT 160; $I++) {
+                    $StaticSpec[$I] = [Single](0.15 + (0.75 * [Math]::Abs([Math]::Sin(($I * 0.25) + ($F * 0.25)))))
+                }
+                For([Int]$I = 0; $I -LT 320; $I++) {
+                    $StaticWave[$I] = [Single](0.70 * [Math]::Sin(($I * 0.12) + ($F * 0.40)))
+                }
+                $Viz.RenderFrame($Canvas, $StaticSpec, $StaticWave, $StaticMetrics, 0.0167)
+                $null = $Canvas.BuildFrameAnsi($true, '')
+            }
+            $Sw.Stop()
+            [Double]$AvgMs = $Sw.Elapsed.TotalMilliseconds / 15.0
+            Assert-True ($AvgMs -LT 10.0) "$($Viz.Name) at 160x48 averaged $([Math]::Round($AvgMs, 2)) ms/frame (must be < 10.0 ms)"
+        }
+
+        Assert-True ($Canvas.NativeCanvas.WriteConsoleUtf16('')) 'WriteConsoleUtf16 must accept empty string safely'
+
+        If([Console]::IsOutputRedirected -EQ $true) {
+            Assert-False ($Canvas.NativeCanvas.WriteConsoleUtf16('test')) 'WriteConsoleUtf16 must return false on redirected stdout so Write-Host fallback triggers'
+        }
+
+        # VERIFY AUDIOANALYZER FFT VERSION CACHING REUSES UNCHANGED BLOCKS AND INVALIDATES ON PUSHBLOCK
+        [Type]$AnalyzerType = 'PSBoombox.AudioAnalyzer' -AS [Type]
+        [Object]$Analyzer    = $AnalyzerType::new()
+        $Analyzer.Configure(44100)
+
+        [Single[]]$BassPcm = [Single[]]::new(1024)
+        For([Int]$I = 0; $I -LT 1024; $I++) {
+            $BassPcm[$I] = [Single](0.40 * [Math]::Sin((2.0 * [Math]::PI * 100.0 * $I) / 44100.0))
+        }
+        $Analyzer.PushBlock($BassPcm, 1024, [Single]0.6, [Single]0.6)
+
+        [Single[]]$SpecA1 = $Analyzer.GetSpectrumSnapshot(32)
+        [Single[]]$MetA1  = $Analyzer.GetAudioMetrics()
+        Assert-True ($MetA1[2] -GT $MetA1[4]) 'Bass metrics should exceed treble on 100 Hz input'
+
+        [Single[]]$TreblePcm = [Single[]]::new(1024)
+        For([Int]$I = 0; $I -LT 1024; $I++) {
+            $TreblePcm[$I] = [Single](0.40 * [Math]::Sin((2.0 * [Math]::PI * 4000.0 * $I) / 44100.0))
+        }
+        $Analyzer.PushBlock($TreblePcm, 1024, [Single]0.6, [Single]0.6)
+
+        [Single[]]$MetA2 = $Analyzer.GetAudioMetrics()
+        Assert-True ($MetA2[4] -GT $MetA1[4]) 'Pushing new audio block must invalidate FFT cache and update treble metric'
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {

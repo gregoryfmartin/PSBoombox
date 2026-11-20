@@ -94,6 +94,30 @@ Class MMWinMMNative {
         )
         $ShortPathMethod.SetImplementationFlags($ShortPathMethod.GetMethodImplementationFlags() -BOR [MethodImplAttributes]::PreserveSig)
 
+        [MethodBuilder]$TimeBeginMethod = $TypeBld.DefinePInvokeMethod(
+            'timeBeginPeriod',
+            'winmm.dll',
+            $PAttr,
+            [CallingConventions]::Standard,
+            [UInt32],
+            [Type[]]@([UInt32]),
+            [CallingConvention]::Winapi,
+            [CharSet]::Auto
+        )
+        $TimeBeginMethod.SetImplementationFlags($TimeBeginMethod.GetMethodImplementationFlags() -BOR [MethodImplAttributes]::PreserveSig)
+
+        [MethodBuilder]$TimeEndMethod = $TypeBld.DefinePInvokeMethod(
+            'timeEndPeriod',
+            'winmm.dll',
+            $PAttr,
+            [CallingConventions]::Standard,
+            [UInt32],
+            [Type[]]@([UInt32]),
+            [CallingConvention]::Winapi,
+            [CharSet]::Auto
+        )
+        $TimeEndMethod.SetImplementationFlags($TimeEndMethod.GetMethodImplementationFlags() -BOR [MethodImplAttributes]::PreserveSig)
+
         [MMWinMMNative]::NativeWinMMType = $TypeBld.CreateType()
 
         Return [MMWinMMNative]::NativeWinMMType
@@ -199,5 +223,23 @@ Class MMWinMMNative {
         }
 
         Return $LongPath
+    }
+
+    Static [Boolean]BeginHighResTimer(
+        [UInt32]$PeriodMs
+    ) {
+        [Type]$NativeType = [MMWinMMNative]::GetNativeType()
+        [UInt32]$Result   = $NativeType::timeBeginPeriod($PeriodMs)
+
+        Return ($Result -EQ [UInt32]0)
+    }
+
+    Static [Boolean]EndHighResTimer(
+        [UInt32]$PeriodMs
+    ) {
+        [Type]$NativeType = [MMWinMMNative]::GetNativeType()
+        [UInt32]$Result   = $NativeType::timeEndPeriod($PeriodMs)
+
+        Return ($Result -EQ [UInt32]0)
     }
 }

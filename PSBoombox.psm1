@@ -107,7 +107,15 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirUi)/Panels/UIPlaylistPanel.ps1"
 . "$($Script:DirUi)/Panels/UIPathInputModal.ps1"
 . "$($Script:DirUi)/Panels/UIEqualizerModal.ps1"
+. "$($Script:DirUi)/Panels/UINoticeModal.ps1"
 . "$($Script:DirUi)/Panels/UIStatusFooterPanel.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerCanvas.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerBase.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerSpectrum.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerMirror.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerOscilloscope.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerRadialPulse.ps1"
+. "$($Script:DirUi)/Visualizers/UIVisualizerWaterfall.ps1"
 
 # LOAD ENGINE CORE AND APPLICATION STATES
 . "$($Script:DirEngine)/AppCore.ps1"
@@ -116,6 +124,8 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirEngine)/States/PBStateDirectoryPrompt.ps1"
 . "$($Script:DirEngine)/States/PBStatePlaylistSavePrompt.ps1"
 . "$($Script:DirEngine)/States/PBStateEqualizer.ps1"
+. "$($Script:DirEngine)/States/PBStateNoticeModal.ps1"
+. "$($Script:DirEngine)/States/PBStateVisualizer.ps1"
 . "$($Script:DirEngine)/States/PBStateShutdown.ps1"
 . "$($Script:DirEngine)/BoomboxCore.ps1"
 

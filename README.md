@@ -9,7 +9,8 @@ A text-based media player for Windows built with PowerShell 7+, featuring a 24-b
 ## Features
 
 - **Native Windows Media Engine & Real-Time 10-Band Equalizer**: Streams `.mp3`, `.wav`, and `.wma` audio in real time through Windows Media Foundation (`mfplat.dll` / `mfreadwrite.dll`), a 10-band peaking biquad equalizer + preamp + soft limiter (`Source/Media/MMEqualizerEngineNative.ps1`), and ring-buffered `winmm.dll` `waveOut*` playback for immediate slider and preset response. MIDI playback (`.mid` / `.midi`) and MCI/mixer interop use pure PowerShell `System.Reflection.Emit` (`DefinePInvokeMethod`) bindings in `MMWinMMNative.ps1`.
-- **10-Band ISO EQ + Presets + Persistence**: Includes a winamp-style `31 Hz`–`16 kHz` equalizer with `-12 dB` to `+12 dB` (`1 dB` steps), preamp slider, 9 built-in presets (`Flat`, `Bass Boost`, `Rock`, `Pop`, `Jazz`, `Classical`, `Vocal`, `Electronic`, `Treble Boost`), unlimited named custom user presets, automatic `Custom` switching on manual edits, and automatic JSON persistence across sessions in `%APPDATA%\PSBoombox\equalizer.json`.
+- **10-Band ISO EQ + Presets + Persistence**: Includes a Winamp-style `31 Hz`–`16 kHz` equalizer with `-12 dB` to `+12 dB` (`1 dB` steps), preamp slider, 9 built-in presets (`Flat`, `Bass Boost`, `Rock`, `Pop`, `Jazz`, `Classical`, `Vocal`, `Electronic`, `Treble Boost`), unlimited named custom user presets, automatic `Custom` switching on manual edits, and automatic JSON persistence across sessions in `%APPDATA%\PSBoombox\equalizer.json`.
+- **Full-Buffer Audio Visualizer Mode (`V`)**: Switches to a full-screen 60 FPS post-EQ visualization canvas (powered by compiled C# ANSI cell-diff rendering and `1 ms` `winmm.dll` timer precision) driven by a real-time 1024-point radix-2 FFT and stereo waveform analyzer, with forward-only `Tab` cycling across five visualizers (**Spectrum Analyzer**, **Mirrored Spectrum**, **Braille Oscilloscope**, **Radial Pulse**, and **Spectrogram Waterfall**).
 - **24-Bit TrueColor Synchronized TUI**: Renders rounded box-drawing borders (`╭─╮│╰─╯`), color-coded browser entries, a top-panel EQ active badge (`[EQ:Rock]` / `[EQ:Off]` / `[EQ:MIDI]`), a seekable track progress scrubber, an animated braille activity spinner, and synchronized terminal frame updates (`\e[?2026h` / `\e[?2026l`).
 - **Integrated Directory & Playlist Workflow**: Launch directly into your current working directory, automatically queue any supported media files found there, browse folders, append tracks, reorder playlists, toggle repeat/shuffle, and save or load playlists on the fly.
 - **Resilient MP3 & Path Handling**: Handles large ID3v2 / embedded album-art tags natively via Media Foundation (with automatic pure PowerShell MPEG frame-sync stripping & short-path staging fallback on MCI error `277` / `268`), cleaning up any temporary staged files on stop and exit.
@@ -182,6 +183,27 @@ Press `E` from anywhere on the main screen to open the centered **Equalizer (10-
 
 ---
 
+### Visualizer Mode (`V`)
+
+![PSBoombox Spectrum Visualizer](Docs/Screenshots/visualizer-mode.png)
+
+![PSBoombox Braille Oscilloscope](Docs/Screenshots/visualizer-oscilloscope.png)
+
+Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer Mode** (`PSBoombox` always starts in Playlist Mode on launch):
+
+- **Active Playback Required**: A decoded audio track (`.mp3`, `.wav`, `.wma`) must be actively playing to enter Visualizer Mode; if stopped or paused, the status bar prompts you to start playback first.
+- **MIDI Protection**: Attempting to enter Visualizer Mode while playing a `.mid` / `.midi` track (or advancing to a MIDI track while in Visualizer Mode) displays a centered modal notice explaining that MIDI synthesis does not produce decodable PCM audio buffers.
+- **Post-EQ Real-Time Visuals & Layout**: Taps live post-EQ audio from the streaming DSP pipeline across the full canvas (`Rows 1 .. Height - 2`), displaying the currently playing track name in the bottom-left and concise controls on the bottom row.
+- **5 Built-In Visualizations (`Tab`)**: Press `Tab` to cycle forward through the visualizers (wrapping cleanly from the last visualization back to the first; reverse `Shift+Tab` cycling is disabled):
+  1. **Spectrum Analyzer** *(default)* — Logarithmic vertical FFT bars (`▁`–`█`) with TrueColor gradient and falling peak-hold caps.
+  2. **Mirrored Spectrum** — Symmetrical top/bottom frequency bars radiating from the vertical midpoint.
+  3. **Braille Oscilloscope** — High-resolution `2 × 4` Unicode Braille waveform plotter with bass-reactive gradients.
+  4. **Radial Pulse** — Aspect-corrected concentric expanding rings and starburst field driven by live bass, mid, and treble energy.
+  5. **Spectrogram Waterfall** — Scrolling time-frequency heat map rendered at 2× vertical resolution with paired half-blocks (`▀`).
+- **Controls & Auto-Return**: Global media controls (`Space`, `N`, `P`, `S`, `+`, `-`, `M`, `R`, `H`, `Q`) remain active while Equalizer/Modal prompts (`E`, `G`, `F2`, `W`) are disabled. Press `V` to return to Playlist Mode at any time, or stop playback (`S` / end of playlist) to return automatically.
+
+---
+
 ## Keyboard Shortcuts
 
 ### Global Shortcuts (Main Screen)
@@ -197,6 +219,7 @@ Press `E` from anywhere on the main screen to open the centered **Equalizer (10-
 | `+` / `-` | Increase / decrease volume by 5% |
 | `M` | Toggle Mute |
 | `E` | Open **Equalizer (10-Band ISO)** modal |
+| `V` | Enter **Visualizer Mode** *(requires playing non-MIDI audio track)* |
 | `G` / `F2` | Open **Go to Directory** modal |
 | `W` | Open **Save Playlist** modal |
 | `Q` / `Esc` | Quit PSBoombox cleanly |
@@ -265,6 +288,19 @@ Press `E` from anywhere on the main screen to open the centered **Equalizer (10-
 | `F` | Reset all bands to `Flat` (`0 dB`) |
 | `E` / `Esc` | Close Equalizer modal *(or select `[ Close ]`)* |
 
+### Visualizer Mode (`V`)
+
+| Key | Action |
+| --- | --- |
+| `Tab` | Advance forward to the next visualizer *(loops back to first after last; no reverse cycling)* |
+| `V` | Exit Visualizer Mode and return to Playlist Mode |
+| `Space` | Toggle Play / Pause |
+| `N` / `P` | Play Next / Previous track |
+| `S` | Stop playback and automatically return to Playlist Mode |
+| `+` / `-` / `M` | Adjust volume ±5% or toggle Mute |
+| `R` / `H` | Cycle Repeat mode / Toggle Shuffle |
+| `Q` | Quit PSBoombox cleanly |
+
 ---
 
 ## Architecture & Project Structure
@@ -281,22 +317,25 @@ PSBoombox/
 │   ├── Color/ & String/           # 24-bit TrueColor library & AT* ANSI control sequence builders
 │   ├── Engine/
 │   │   ├── AppCore.ps1            # Frame loop, delta timing, async ConsoleKeyInfo runspace
-│   │   ├── BoomboxCore.ps1        # Coordinates panels, media services, focus zones & actions
-│   │   └── States/                # PBStateInit, PBStateMainPlayer, PBStateEqualizer, PBState*Prompt, PBStateShutdown
+│   │   ├── BoomboxCore.ps1        # Coordinates panels, media services, visualizers, focus zones & actions
+│   │   └── States/                # PBStateInit, PBStateMainPlayer, PBStateVisualizer, PBStateEqualizer, PBStateNoticeModal, PBState*Prompt, PBStateShutdown
 │   ├── Enums/ & Events/ & Util/   # Focus zones, repeat/playback enums, Janitor environment checks
 │   ├── Media/
-│   │   ├── MMWinMMNative.ps1      # Pure Reflection.Emit P/Invoke for winmm.dll MCI & kernel32.dll
-│   │   ├── MMEqualizerEngineNative.ps1 # Scoped Add-Type exception: Media Foundation decoder, 10-band biquad DSP, waveOut
+│   │   ├── MMWinMMNative.ps1      # Pure Reflection.Emit P/Invoke for winmm.dll MCI, timer & kernel32.dll
+│   │   ├── MMEqualizerEngineNative.ps1 # Scoped Add-Type exceptions: 60 Hz Media Foundation/waveOut EQ + FFT & 60 FPS visualizer canvas/renderer
 │   │   ├── MMEqualizerPreset.ps1  # Equalizer preset model & band normalization
 │   │   ├── MMEqualizerService.ps1 # 9 built-in presets, custom user presets & equalizer.json persistence
-│   │   ├── MMMediaPlayer.ps1      # Hybrid Media Foundation (EQ) + MCI (MIDI) playback controller
+│   │   ├── MMMediaPlayer.ps1      # Hybrid Media Foundation (EQ/FFT) + MCI (MIDI) playback controller
 │   │   ├── MMDirectoryService.ps1 # Filesystem browsing & audio/playlist enumeration
 │   │   ├── MMPlaylist.ps1         # Queue operations, RepeatMode & Shuffle logic
 │   │   └── MMPlaylistFileService.ps1 # Reader & writer for .m3u, .m3u8, .pls, and .wpl
 │   ├── StateMachine/              # Generic SMStateMachine, SMUiElementStateMachine, SMPlaybackStateMachine
-│   └── UI/                        # UIContainer, UIPanel, Elements/* (incl. UIVerticalSlider), Panels/* (incl. UIEqualizerModal)
+│   └── UI/
+│       ├── Elements/*             # Controls including UIVerticalSlider, UITrackProgressBar, UIVolumeControl
+│       ├── Panels/*               # Panels & modals including UIEqualizerModal, UINoticeModal, UIPathInputModal
+│       └── Visualizers/*          # Double-buffered UIVisualizerCanvas & 5 visualizers (Spectrum, Mirror, Oscilloscope, RadialPulse, Waterfall)
 └── Tests/
-    ├── Run-PSBoomboxTests.ps1     # Automated unit, DSP, persistence, integration & style audit suite
+    ├── Run-PSBoomboxTests.ps1     # Automated unit, DSP, FFT, persistence, integration & style audit suite
     └── Test-Helpers.ps1           # Synthetic WAV / MP3 generators and assertions
 ```
 
@@ -310,7 +349,7 @@ Run the automated test suite from the repository root using PowerShell 7 (`pwsh`
 pwsh -NoProfile -File .\Tests\Run-PSBoomboxTests.ps1
 ```
 
-The test harness validates 10 test suites covering:
+The test harness validates 13 test suites covering:
 1. Module manifest metadata, `Core` edition enforcement, and `Start-PSBoombox` parameter exports.
 2. Coding standard and pure native PowerShell compliance across all files under `Source/` and `Public/` (verifying `Add-Type` is used exclusively inside `Source/Media/MMEqualizerEngineNative.ps1`, `Set-StrictMode -Version Latest`, and `ColorLibrary` rules).
 3. UI, Playback, and Application finite state machine transitions.
@@ -321,3 +360,6 @@ The test harness validates 10 test suites covering:
 8. Headless engine simulation of focus cycling, directory/save/equalizer modals (`E`, `T`, `UpArrow`, `S`, top `[EQ:...]` badge), and clean shutdown.
 9. 10-band biquad EQ DSP frequency response (`62 Hz` boost, `4 kHz` cut, bypass when disabled, and soft-limiter output bounds).
 10. Equalizer preset management (`9` built-in profiles, custom named user presets, built-in protection, and `equalizer.json` startup persistence).
+11. 1024-point FFT audio analysis (`100 Hz` bass bin vs. `4 kHz` treble bin separation) and post-EQ spectrum reactivity.
+12. Visualizer Mode state machine flow (stopped guard, MIDI notice modal, live `.wav` entry, bottom-left track label, forward-only `Tab` wrap cycling, `E` lockout, global volume/mute, `V` exit, and stop auto-return).
+13. 60 FPS visualizer pacing (`TargetFps` switching, `winmm.dll` 1 ms timer P/Invoke), `AudioAnalyzer` FFT version caching, native cell-diff emission, and `< 10 ms/frame` render budget at `160×48`.
