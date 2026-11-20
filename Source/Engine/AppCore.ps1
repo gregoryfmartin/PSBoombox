@@ -1,0 +1,166 @@
+using namespace System
+using namespace System.Collections.Concurrent
+using namespace System.Collections.Generic
+using namespace System.Diagnostics
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Runspaces
+using namespace System.Threading
+
+Set-StrictMode -Version Latest
+
+
+
+
+
+###############################################################################
+#
+# APP CORE
+#
+# ENGINE CORE PROVIDING THE FRAME LOOP, DELTA-TIME TIMING, INPUT RUNSPACE,
+# AND STATE MACHINE EXECUTION.
+#
+###############################################################################
+
+Class AppCore {
+    [Boolean]$IsRunning
+    [Boolean]$IsHeadlessMode
+    [BufferSpecDefinition]$BufferSpec
+    [ContextBroadcaster]$ContextBroadcaster
+    [Janitor]$Janitor
+    [Int]$TargetFps
+    [Double]$TargetFrameTime
+    [Stopwatch]$Sw
+    [Double]$LastTime
+    [SMStateMachine]$AppState
+    [ConcurrentQueue[ConsoleKeyInfo]]$InputQueue
+    [Runspace]$InputRunspace
+    [PowerShell]$InputPowerShell
+
+    AppCore() {
+        $this.IsRunning          = $true
+        $this.IsHeadlessMode     = ([Console]::IsInputRedirected -EQ $true) -OR ([Console]::IsOutputRedirected -EQ $true)
+        $this.TargetFps          = 30
+        $this.TargetFrameTime    = 1.0 / $this.TargetFps
+        $this.Sw                 = [Stopwatch]::new()
+        $this.LastTime           = 0.0
+        $this.BufferSpec         = [BufferSpecDefinition]::new()
+        $this.Janitor            = [Janitor]::new($Global:PSVersionTable)
+        $this.ContextBroadcaster = [ContextBroadcaster]::new()
+        $this.InputQueue         = [ConcurrentQueue[ConsoleKeyInfo]]::new()
+        $this.InputRunspace      = $null
+        $this.InputPowerShell    = $null
+        $this.AppState           = $null
+    }
+
+    [Void]InitializeStates() {}
+
+    [Void]EnqueueSyntheticKey(
+        [ConsoleKeyInfo]$KeyInfo
+    ) {
+        $this.InputQueue.Enqueue($KeyInfo)
+    }
+
+    [Void]Setup() {
+        If($this.IsHeadlessMode -EQ $false) {
+            $this.InputRunspace = [RunspaceFactory]::CreateRunspace()
+            $this.InputRunspace.Open()
+            $this.InputRunspace.SessionStateProxy.SetVariable('InputQueue', $this.InputQueue)
+
+            $this.InputPowerShell = [PowerShell]::Create().AddScript({
+                While($true) {
+                    If([Console]::KeyAvailable -EQ $true) {
+                        $InputQueue.Enqueue([Console]::ReadKey($true))
+                    }
+
+                    Start-Sleep -Milliseconds 16
+                }
+            })
+            $this.InputPowerShell.Runspace = $this.InputRunspace
+            $null                          = $this.InputPowerShell.BeginInvoke()
+        }
+
+        $this.InitializeStates()
+
+        If($null -EQ $this.AppState) {
+            Write-Warning 'No App State Machine was initialized!'
+
+            $this.IsRunning = $false
+        }
+
+        $this.Sw.Start()
+    }
+
+    [Void]Logic(
+        [Double]$DeltaTime
+    ) {
+        [List[ConsoleKeyInfo]]$KeysPressedThisFrame = [List[ConsoleKeyInfo]]::new()
+        [ConsoleKeyInfo]$KeyInfo                    = [ConsoleKeyInfo]::new([Char]' ', [ConsoleKey]::None, $false, $false, $false)
+
+        While($this.InputQueue.TryDequeue([Ref]$KeyInfo) -EQ $true) {
+            $KeysPressedThisFrame.Add($KeyInfo)
+        }
+
+        If($null -NE $this.AppState) {
+            $this.AppState.Update([Context]::new(@{
+                [SMState]::ContextDeltaTime   = $DeltaTime
+                [SMState]::ContextKeysPressed = $KeysPressedThisFrame
+                [SMState]::ContextBoomboxCore = $this
+            }))
+        }
+    }
+
+    [Void]Run() {
+        Try {
+            $this.Setup()
+
+            While($this.IsRunning -EQ $true) {
+                [Double]$CurrentTime = $this.Sw.Elapsed.TotalSeconds
+                [Double]$Dt          = $CurrentTime - $this.LastTime
+                $this.LastTime       = $CurrentTime
+
+                $this.Logic($Dt)
+
+                [Double]$FrameWorkTime    = $this.Sw.Elapsed.TotalSeconds - $CurrentTime
+                [Double]$SleepTimeSeconds = $this.TargetFrameTime - $FrameWorkTime
+
+                If($SleepTimeSeconds -GT 0.0) {
+                    [Thread]::Sleep([Int]($SleepTimeSeconds * 1000.0))
+                }
+            }
+        } Finally {
+            $this.Cleanup()
+        }
+    }
+
+    [Void]Cleanup() {
+        If($null -NE $this.InputPowerShell) {
+            Try {
+                $this.InputPowerShell.Stop()
+            } Catch {
+                # IGNORE STOP ERRORS ON DISPOSE
+            }
+
+            $this.InputPowerShell.Dispose()
+            $this.InputPowerShell = $null
+        }
+
+        If($null -NE $this.InputRunspace) {
+            Try {
+                $this.InputRunspace.Close()
+            } Catch {
+                # IGNORE CLOSE ERRORS ON DISPOSE
+            }
+
+            $this.InputRunspace.Dispose()
+            $this.InputRunspace = $null
+        }
+
+        If($null -NE $this.Sw) {
+            $this.Sw.Stop()
+        }
+
+        If([Console]::IsOutputRedirected -EQ $false) {
+            Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::CursorShow)" -NoNewline
+        }
+    }
+}
