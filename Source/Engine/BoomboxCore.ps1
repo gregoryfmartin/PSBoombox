@@ -24,10 +24,12 @@ Class BoomboxCore : AppCore {
     [MMDirectoryService]$DirectoryService
     [MMPlaylist]$Playlist
     [MMMediaPlayer]$MediaPlayer
+    [MMEqualizerService]$EqualizerService
     [UIPlaybackControlPanel]$PlaybackPanel
     [UIDirectoryBrowserPanel]$DirectoryPanel
     [UIPlaylistPanel]$PlaylistPanel
     [UIPathInputModal]$PathModal
+    [UIEqualizerModal]$EqualizerModal
     [UIStatusFooterPanel]$FooterPanel
     [BoomboxFocusZone]$ActiveFocusZone
     [Boolean]$AutoFocusPlaylistOnStart
@@ -57,10 +59,12 @@ Class BoomboxCore : AppCore {
     ) {
         $this.InitialPath              = (($null -NE $InitialPath) -AND ($InitialPath.Length -GT 0)) ? $InitialPath : (Get-Location).Path
         $this.InitialPlaylistPath      = ($null -EQ $InitialPlaylistPath) ? '' : $InitialPlaylistPath
-        $this.DirectoryService         = [MMDirectoryService]::new()
-        $this.Playlist                 = [MMPlaylist]::new()
-        $this.MediaPlayer              = [MMMediaPlayer]::new()
-        $this.ActiveFocusZone          = [BoomboxFocusZone]::DirectoryBrowser
+        $this.DirectoryService             = [MMDirectoryService]::new()
+        $this.Playlist                     = [MMPlaylist]::new()
+        $this.EqualizerService             = [MMEqualizerService]::new()
+        $this.MediaPlayer                  = [MMMediaPlayer]::new()
+        $this.MediaPlayer.EqualizerService = $this.EqualizerService
+        $this.ActiveFocusZone              = [BoomboxFocusZone]::DirectoryBrowser
         $this.AutoFocusPlaylistOnStart = $false
         $this.PendingStartupStatus     = 'Ready'
         $this.PendingStartupError      = $false
@@ -90,6 +94,7 @@ Class BoomboxCore : AppCore {
         $this.DirectoryPanel = [UIDirectoryBrowserPanel]::new($BottomTopRow, $BottomEndRow, 1, $LeftPaneWidth)
         $this.PlaylistPanel  = [UIPlaylistPanel]::new($BottomTopRow, $BottomEndRow, ($LeftPaneWidth + 1), $this.LayoutWidth)
         $this.PathModal      = [UIPathInputModal]::new($this.LayoutWidth, $this.LayoutHeight)
+        $this.EqualizerModal = [UIEqualizerModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.FooterPanel    = [UIStatusFooterPanel]::new(($this.LayoutHeight - 1), $this.LayoutWidth)
 
         [BoomboxCore]$SelfCore = $this
@@ -199,6 +204,80 @@ Class BoomboxCore : AppCore {
 
             $SelfCore.FooterPanel.SetError($ErrorMsg)
         }.GetNewClosure()
+
+        $this.EqualizerService.OnEqualizerChanged = {
+            Param(
+                [MMEqualizerService]$EqService
+            )
+
+            $SelfCore.MediaPlayer.ApplyEqualizerFromService()
+            $SelfCore.PlaybackPanel.SyncFromPlayer($SelfCore.MediaPlayer, $SelfCore.Playlist)
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnToggleEq = {
+            Param(
+                [Context]$ActionContext
+            )
+
+            $SelfCore.ToggleEqualizer()
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnCyclePreset = {
+            Param(
+                [Int]$Direction
+            )
+
+            $SelfCore.CycleEqualizerPreset($Direction)
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnPreampChanged = {
+            Param(
+                [Int]$GainDb
+            )
+
+            $SelfCore.SetEqualizerPreamp($GainDb)
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnBandChanged = {
+            Param(
+                [Int]$BandIndex,
+                [Int]$GainDb
+            )
+
+            $SelfCore.SetEqualizerBand($BandIndex, $GainDb)
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnSavePreset = {
+            Param(
+                [String]$PresetName
+            )
+
+            Return $SelfCore.SaveEqualizerUserPreset($PresetName)
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnDeletePreset = {
+            Param(
+                [Context]$ActionContext
+            )
+
+            $SelfCore.DeleteActiveEqualizerPreset()
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnResetFlat = {
+            Param(
+                [Context]$ActionContext
+            )
+
+            $SelfCore.ResetEqualizerFlat()
+        }.GetNewClosure()
+
+        $this.EqualizerModal.OnCloseRequested = {
+            Param(
+                [Context]$ActionContext
+            )
+
+            $SelfCore.AppState.Trigger('CloseEqualizer', [Context]::new(@{ [SMState]::ContextBoomboxCore = $SelfCore }))
+        }.GetNewClosure()
     }
 
     [Void]InitializeStates() {
@@ -209,6 +288,7 @@ Class BoomboxCore : AppCore {
             [PBStateMainPlayer]::new(),
             [PBStateDirectoryPrompt]::new(),
             [PBStatePlaylistSavePrompt]::new(),
+            [PBStateEqualizer]::new(),
             [PBStateShutdown]::new()
         ))
 
@@ -219,6 +299,8 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStateDirectoryPrompt', 'CloseDirectoryPrompt', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenSavePlaylistPrompt', 'PBStatePlaylistSavePrompt'),
             [SMTransition]::new('PBStatePlaylistSavePrompt', 'CloseSavePlaylistPrompt', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateMainPlayer', 'OpenEqualizer', 'PBStateEqualizer'),
+            [SMTransition]::new('PBStateEqualizer', 'CloseEqualizer', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'Quit', 'PBStateShutdown')
         ))
     }
@@ -472,6 +554,82 @@ Class BoomboxCore : AppCore {
 
         $this.PlaybackPanel.SyncFromPlayer($this.MediaPlayer, $this.Playlist)
         $this.FooterPanel.SetStatus(($Enabled -EQ $true) ? 'Shuffle: On' : 'Shuffle: Off')
+    }
+
+    [Void]ToggleEqualizer() {
+        [Boolean]$Enabled = $this.EqualizerService.ToggleEnabled()
+
+        $this.EqualizerModal.InlineStatusOverride = ''
+        $this.EqualizerModal.SyncFromService($this.EqualizerService)
+        $this.FooterPanel.SetStatus(($Enabled -EQ $true) ? "Equalizer: On ($($this.EqualizerService.ActivePresetName))" : 'Equalizer: Off')
+    }
+
+    [Void]CycleEqualizerPreset(
+        [Int]$Direction
+    ) {
+        [String]$NewPreset = $this.EqualizerService.CyclePreset($Direction)
+
+        $this.EqualizerModal.InlineStatusOverride = ''
+        $this.EqualizerModal.SyncFromService($this.EqualizerService)
+        $this.FooterPanel.SetStatus("Equalizer preset: $($NewPreset)")
+    }
+
+    [Void]SetEqualizerPreamp(
+        [Int]$GainDb
+    ) {
+        $this.EqualizerService.SetPreampDb($GainDb)
+
+        $this.EqualizerModal.InlineStatusOverride = ''
+        $this.EqualizerModal.SyncFromService($this.EqualizerService)
+        $this.FooterPanel.SetStatus("Equalizer Preamp: $($this.EqualizerService.PreampDb) dB (Custom)")
+    }
+
+    [Void]SetEqualizerBand(
+        [Int]$BandIndex,
+        [Int]$GainDb
+    ) {
+        $this.EqualizerService.SetBandGainDb($BandIndex, $GainDb)
+
+        [String]$Label = [MMEqualizerService]::BandLabels[$BandIndex]
+
+        $this.EqualizerModal.InlineStatusOverride = ''
+        $this.EqualizerModal.SyncFromService($this.EqualizerService)
+        $this.FooterPanel.SetStatus("Equalizer $($Label) Hz: $($this.EqualizerService.BandGainsDb[$BandIndex]) dB (Custom)")
+    }
+
+    [Hashtable]SaveEqualizerUserPreset(
+        [String]$PresetName
+    ) {
+        [Hashtable]$SaveResult = $this.EqualizerService.SaveUserPreset($PresetName)
+
+        If($SaveResult.Success -EQ $true) {
+            $this.FooterPanel.SetStatus($SaveResult.Message)
+        } Else {
+            $this.FooterPanel.SetError($SaveResult.Message)
+        }
+
+        Return $SaveResult
+    }
+
+    [Void]DeleteActiveEqualizerPreset() {
+        [Hashtable]$DelResult = $this.EqualizerService.DeleteUserPreset($this.EqualizerService.ActivePresetName)
+
+        If($DelResult.Success -EQ $true) {
+            $this.EqualizerModal.SetInlineStatus($DelResult.Message, $false)
+            $this.EqualizerModal.SyncFromService($this.EqualizerService)
+            $this.FooterPanel.SetStatus($DelResult.Message)
+        } Else {
+            $this.EqualizerModal.SetInlineStatus($DelResult.Message, $true)
+            $this.FooterPanel.SetStatus($DelResult.Message)
+        }
+    }
+
+    [Void]ResetEqualizerFlat() {
+        $this.EqualizerService.ResetToFlat()
+
+        $this.EqualizerModal.InlineStatusOverride = ''
+        $this.EqualizerModal.SyncFromService($this.EqualizerService)
+        $this.FooterPanel.SetStatus('Equalizer reset to Flat')
     }
 
     [Void]ActivateSelectedDirectoryEntry() {

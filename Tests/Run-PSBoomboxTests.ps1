@@ -61,7 +61,9 @@ Invoke-TestCase -Name 'Style and Pure Native PowerShell Audit' -Body {
         Assert-True ($Lines.Length -GE 3) "$($CodeFile.Name) is too short"
         Assert-Equal $Lines[0] 'using namespace System' "$($CodeFile.Name) line 1 must be 'using namespace System'"
         Assert-True ($RawText.Contains('Set-StrictMode -Version Latest') -EQ $true) "$($CodeFile.Name) must enable Set-StrictMode -Version Latest"
-        Assert-False ([Regex]::IsMatch($RawText, '\bAdd-Type\b')) "$($CodeFile.Name) must not use Add-Type / inline C#"
+        If($CodeFile.Name -NE 'MMEqualizerEngineNative.ps1') {
+            Assert-False ([Regex]::IsMatch($RawText, '\bAdd-Type\b')) "$($CodeFile.Name) must not use Add-Type / inline C#"
+        }
         Assert-False ([Regex]::IsMatch($RawText, '\[Bool\]')) "$($CodeFile.Name) must use [Boolean] instead of [Bool]"
 
         If($CodeFile.Name -NE 'TrueColor.ps1') {
@@ -80,6 +82,11 @@ If($null -NE $ModuleScope) {
         )
 
         . "$($TestRoot)\Test-Helpers.ps1"
+
+        [String]$IsolatedEqConfigDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_EqCfgTest_$([Guid]::NewGuid().ToString('N'))"
+        [MMEqualizerService]::ConfigDirectoryOverride = $IsolatedEqConfigDir
+
+        Try {
 
     & $InvokeCase -Name 'State Machines (UI, Playback, and Application FSMs)' -Body {
         [UILabel]$Label = [UILabel]::new('Sample', [ATCoordinates]::new(1, 1))
@@ -213,15 +220,15 @@ If($null -NE $ModuleScope) {
 
                 Assert-True ($Player.LoadAndPlay([MMTrackInfo]::new($LargeId3Mp3))) "Large ID3v2 MP3 failed: $($Player.LastError)"
                 [String]$StagedLargePath = $Player.StagedTempFilePath
-                Assert-True ($StagedLargePath.Length -GT 0) 'Large ID3v2 MP3 should use staged temp file'
-                Assert-True ([File]::Exists($StagedLargePath)) 'Staged temp file should exist during playback'
                 Assert-True ($Player.IsPlaying()) 'Large ID3v2 MP3 should be Playing'
                 Assert-True ($Player.DurationMs -GT 0) "Large ID3v2 MP3 DurationMs should be > 0, got $($Player.DurationMs)"
                 Assert-True ($Player.Pause()) 'Large ID3v2 MP3 Pause should succeed'
                 Assert-True ($Player.Seek(200)) 'Large ID3v2 MP3 Seek should succeed'
                 Assert-True ($Player.Resume()) 'Large ID3v2 MP3 Resume should succeed'
                 $Player.Stop()
-                Assert-False ([File]::Exists($StagedLargePath)) 'Stop() must delete staged temp file'
+                If($StagedLargePath.Length -GT 0) {
+                    Assert-False ([File]::Exists($StagedLargePath)) 'Stop() must delete staged temp file'
+                }
 
                 Assert-True ($Player.LoadAndPlay([MMTrackInfo]::new($LongPathMp3))) "Long-path MP3 failed: $($Player.LastError)"
                 [String]$StagedLongPath = $Player.StagedTempFilePath
@@ -397,6 +404,29 @@ If($null -NE $ModuleScope) {
             Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Enter saves playlist and returns to MainPlayer'
             Assert-True ([File]::Exists((Join-Path $TempDir 'playlist.m3u8'))) 'Saved playlist.m3u8 must exist on disk'
 
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateEqualizer' 'E opens Equalizer modal'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::UpArrow, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'s', [ConsoleKey]::S, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'N', [ConsoleKey]::N, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'i', [ConsoleKey]::I, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'g', [ConsoleKey]::G, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'h', [ConsoleKey]::H, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]13, [ConsoleKey]::Enter, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True $Core.EqualizerService.Enabled 'T inside modal toggles EQ Enabled'
+            Assert-Equal $Core.EqualizerService.BandGainsDb[0] 1 'UpArrow increments focused 31 Hz band to +1 dB'
+            Assert-Equal $Core.EqualizerService.ActivePresetName 'Night' 'Saving custom preset activates Night'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'E inside Equalizer modal closes back to MainPlayer'
+            Assert-True ($Core.PlaybackPanel.EqBadgeLabel.UserData.Trim() -EQ '[EQ:Night]') "Top EQ badge should display '[EQ:Night]' but got '$($Core.PlaybackPanel.EqBadgeLabel.UserData)'"
+
             $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'q', [ConsoleKey]::Q, $false, $false, $false))
             $Core.Logic(0.033)
             Assert-Equal $Core.AppState.CurrentState 'PBStateShutdown' 'Q transitions to Shutdown'
@@ -407,6 +437,118 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
         }
     }
+
+    & $InvokeCase -Name 'Equalizer DSP Frequency Response and Bypass' -Body {
+        [Int]$SampleRate = 44100
+        [Int]$Frames     = 4410
+
+        [Func[Double, Single[]]]$MakeSine = {
+            Param([Double]$FreqHz)
+            [Single[]]$Buf = [Single[]]::new($Frames * 2)
+            For([Int]$I = 0; $I -LT $Frames; $I++) {
+                [Single]$Val = [Single](0.25 * [Math]::Sin((2.0 * [Math]::PI * $FreqHz * $I) / $SampleRate))
+                $Buf[($I * 2)]     = $Val
+                $Buf[($I * 2) + 1] = $Val
+            }
+            Return $Buf
+        }
+
+        [Func[Single[], Double]]$ComputeRms = {
+            Param([Single[]]$Buf)
+            [Double]$Sum = 0.0
+            [Int]$Start  = [Int]($Buf.Length / 4)
+            [Int]$Count  = $Buf.Length - $Start
+            For([Int]$I = $Start; $I -LT $Buf.Length; $I++) {
+                $Sum += ([Double]$Buf[$I] * [Double]$Buf[$I])
+            }
+            Return [Math]::Sqrt($Sum / $Count)
+        }
+
+        [Single[]]$Sine62 = $MakeSine.Invoke(62.5)
+        [Single[]]$Sine4k = $MakeSine.Invoke(4000.0)
+        [Double]$Rms62Raw = $ComputeRms.Invoke($Sine62)
+        [Double]$Rms4kRaw = $ComputeRms.Invoke($Sine4k)
+
+        [Double[]]$BoostLow = [Double[]]@(0.0, 12.0, 0.0, 0.0, 0.0, 0.0, 0.0, -12.0, 0.0, 0.0)
+        [Single[]]$Bypassed = [MMEqualizerEngineNative]::ProcessBufferForTest($Sine62, $SampleRate, 2, $false, 6.0, $BoostLow)
+        [Double]$RmsByp     = $ComputeRms.Invoke($Bypassed)
+        Assert-True ([Math]::Abs($RmsByp - $Rms62Raw) -LT 0.0001) 'Disabled EQ must bypass signal unchanged'
+
+        [Single[]]$LowOut  = [MMEqualizerEngineNative]::ProcessBufferForTest($Sine62, $SampleRate, 2, $true, 0.0, $BoostLow)
+        [Double]$RmsLowOut = $ComputeRms.Invoke($LowOut)
+        Assert-True ($RmsLowOut -GT ($Rms62Raw * 2.5)) "62 Hz +12 dB boost must substantially raise RMS ($($RmsLowOut) vs $($Rms62Raw))"
+
+        [Single[]]$HighOut  = [MMEqualizerEngineNative]::ProcessBufferForTest($Sine4k, $SampleRate, 2, $true, 0.0, $BoostLow)
+        [Double]$RmsHighOut = $ComputeRms.Invoke($HighOut)
+        Assert-True ($RmsHighOut -LT ($Rms4kRaw * 0.45)) "4 kHz -12 dB cut must substantially lower RMS ($($RmsHighOut) vs $($Rms4kRaw))"
+
+        [Single[]]$ClipTest = [Single[]]@(0.95, -0.95, 0.95, -0.95)
+        [Double[]]$FlatZero = [Double[]]@(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        [Single[]]$LimOut   = [MMEqualizerEngineNative]::ProcessBufferForTest($ClipTest, $SampleRate, 2, $true, 12.0, $FlatZero)
+        Foreach($S in $LimOut) {
+            Assert-True (($S -GE -1.0) -AND ($S -LE 1.0)) "Soft limiter must keep samples within [-1, 1], got $($S)"
+        }
+    }
+
+    & $InvokeCase -Name 'Equalizer Presets and %APPDATA% Persistence' -Body {
+        [String]$CfgTemp = Join-Path ([Path]::GetTempPath()) "PSBoombox_EqJson_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $CfgTemp -ItemType Directory -Force
+
+        Try {
+            [MMEqualizerService]$Svc1 = [MMEqualizerService]::new($CfgTemp)
+            $Svc1.Load()
+            Assert-Equal $Svc1.BuiltInPresets.Count 9 'Must provide 9 built-in EQ presets'
+            Assert-False $Svc1.Enabled 'Initial EQ Enabled defaults to false'
+            Assert-Equal $Svc1.ActivePresetName 'Flat' 'Initial preset defaults to Flat'
+
+            Assert-True ($Svc1.ApplyPreset('Rock')) 'Applying Rock preset should succeed'
+            Assert-Equal $Svc1.BandGainsDb[0] 4 'Rock 31 Hz gain should be +4 dB'
+            Assert-Equal $Svc1.PreampDb -1 'Rock Preamp should be -1 dB'
+
+            $Svc1.SetBandGainDb(1, 20)
+            Assert-Equal $Svc1.BandGainsDb[1] 12 'Band gain must clamp at +12 dB'
+            Assert-Equal $Svc1.ActivePresetName 'Custom' 'Manual slider edit switches ActivePreset to Custom'
+
+            [Hashtable]$ReservedRes = $Svc1.SaveUserPreset('Rock')
+            Assert-False $ReservedRes.Success 'Saving over built-in preset name must be rejected'
+
+            [Hashtable]$SaveRes = $Svc1.SaveUserPreset('Studio Cans')
+            Assert-True $SaveRes.Success "Saving named user preset failed: $($SaveRes.Message)"
+            $Svc1.SetEnabled($true)
+            Assert-True ([File]::Exists((Join-Path $CfgTemp 'equalizer.json'))) 'equalizer.json must be written to disk'
+
+            [MMEqualizerService]$Svc2 = [MMEqualizerService]::new($CfgTemp)
+            $Svc2.Load()
+            Assert-True $Svc2.Enabled 'Persisted Enabled=true must load on startup'
+            Assert-Equal $Svc2.ActivePresetName 'Studio Cans' 'Persisted ActivePreset must load on startup'
+            Assert-Equal $Svc2.BandGainsDb[1] 12 'Persisted band gains must load cleanly'
+            Assert-True ($Svc2.IsActivePresetDeletable()) 'Custom preset should be marked deletable'
+
+            [String]$PrevOverride = [MMEqualizerService]::ConfigDirectoryOverride
+            [MMEqualizerService]::ConfigDirectoryOverride = $CfgTemp
+            [String]$EmptyMediaDir = Join-Path $CfgTemp 'EmptyDir'
+            $null = New-Item -Path $EmptyMediaDir -ItemType Directory -Force
+            [BoomboxCore]$RestartCore = [BoomboxCore]::new($EmptyMediaDir, '')
+            $RestartCore.InitializeStates()
+            $RestartCore.Logic(0.016)
+            Assert-True $RestartCore.EqualizerService.Enabled 'Fresh BoomboxCore startup must load Enabled=true from equalizer.json'
+            Assert-Equal $RestartCore.EqualizerService.ActivePresetName 'Studio Cans' 'Fresh BoomboxCore startup must restore saved custom preset'
+            $RestartCore.Cleanup()
+            [MMEqualizerService]::ConfigDirectoryOverride = $PrevOverride
+
+            [Hashtable]$DelRes = $Svc2.DeleteUserPreset('Studio Cans')
+            Assert-True $DelRes.Success 'Deleting custom preset should succeed'
+            Assert-Equal $Svc2.ActivePresetName 'Custom' 'ActivePreset falls back to Custom after deleting active user preset'
+        } Finally {
+            Remove-Item -Path $CfgTemp -Recurse -Force -ErrorAction Stop
+        }
+    }
+        } Finally {
+            [MMEqualizerService]::ConfigDirectoryOverride = ''
+            If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {
+                Remove-Item -Path $IsolatedEqConfigDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     })
 
     & $ModuleTestRunner ${function:Invoke-TestCase} $PSScriptRoot

@@ -68,6 +68,9 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 
 # LOAD WINDOWS MULTIMEDIA AND DOMAIN LAYER
 . "$($Script:DirMedia)/MMWinMMNative.ps1"
+. "$($Script:DirMedia)/MMEqualizerEngineNative.ps1"
+. "$($Script:DirMedia)/MMEqualizerPreset.ps1"
+. "$($Script:DirMedia)/MMEqualizerService.ps1"
 . "$($Script:DirMedia)/MMTrackInfo.ps1"
 . "$($Script:DirMedia)/MMDirectoryEntry.ps1"
 . "$($Script:DirMedia)/MMDirectoryService.ps1"
@@ -91,6 +94,7 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirUi)/Elements/UIMenuItem.ps1"
 . "$($Script:DirUi)/Elements/UIMenu.ps1"
 . "$($Script:DirUi)/Elements/UINumberSpinner.ps1"
+. "$($Script:DirUi)/Elements/UIVerticalSlider.ps1"
 . "$($Script:DirUi)/Elements/UIProgressBar.ps1"
 . "$($Script:DirUi)/Elements/UIVolumeControl.ps1"
 . "$($Script:DirUi)/Elements/UITrackProgressBar.ps1"
@@ -102,6 +106,7 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirUi)/Panels/UIDirectoryBrowserPanel.ps1"
 . "$($Script:DirUi)/Panels/UIPlaylistPanel.ps1"
 . "$($Script:DirUi)/Panels/UIPathInputModal.ps1"
+. "$($Script:DirUi)/Panels/UIEqualizerModal.ps1"
 . "$($Script:DirUi)/Panels/UIStatusFooterPanel.ps1"
 
 # LOAD ENGINE CORE AND APPLICATION STATES
@@ -110,6 +115,7 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirEngine)/States/PBStateMainPlayer.ps1"
 . "$($Script:DirEngine)/States/PBStateDirectoryPrompt.ps1"
 . "$($Script:DirEngine)/States/PBStatePlaylistSavePrompt.ps1"
+. "$($Script:DirEngine)/States/PBStateEqualizer.ps1"
 . "$($Script:DirEngine)/States/PBStateShutdown.ps1"
 . "$($Script:DirEngine)/BoomboxCore.ps1"
 

@@ -35,6 +35,9 @@ Class MMMediaPlayer {
     [String]$LastError
     [String]$StagedTempFilePath
     [Int]$StageSequence
+    [MMEqualizerService]$EqualizerService
+    [Object]$NativeEngine
+    [Boolean]$UsesNativeEngine
     [ScriptBlock]$OnStateChanged
     [ScriptBlock]$OnTrackEnded
     [ScriptBlock]$OnError
@@ -57,6 +60,9 @@ Class MMMediaPlayer {
         $this.LastError            = ''
         $this.StagedTempFilePath   = ''
         $this.StageSequence        = 0
+        $this.EqualizerService     = $null
+        $this.NativeEngine         = [MMEqualizerEngineNative]::CreateEngine()
+        $this.UsesNativeEngine     = $false
         $this.OnStateChanged       = $null
         $this.OnTrackEnded         = $null
         $this.OnError              = $null
@@ -365,8 +371,39 @@ Class MMMediaPlayer {
         Return [MMWinMMNative]::GetShortPath($TempPath)
     }
 
+    [Boolean]ShouldUseNativeEngine(
+        [MMTrackInfo]$Track
+    ) {
+        If($null -EQ $Track) {
+            Return $false
+        }
+
+        Return ($Track.Extension -IN @('.mp3', '.wav', '.wma'))
+    }
+
+    [Boolean]IsEqualizerBypassedForCurrentTrack() {
+        Return (($null -NE $this.CurrentTrack) -AND ($this.UsesNativeEngine -EQ $false) -AND ($this.IsStopped() -EQ $false))
+    }
+
+    [Void]ApplyEqualizerFromService() {
+        If(($null -NE $this.NativeEngine) -AND ($null -NE $this.EqualizerService)) {
+            $this.NativeEngine.SetEqualizerState(
+                $this.EqualizerService.Enabled,
+                [Double]$this.EqualizerService.PreampDb,
+                $this.EqualizerService.GetBandGainsAsDoubleArray()
+            )
+        }
+    }
+
     [Void]CloseCurrentAlias() {
-        If($this.HasOpenAlias -EQ $true) {
+        If($this.UsesNativeEngine -EQ $true) {
+            If($null -NE $this.NativeEngine) {
+                $this.NativeEngine.Stop()
+            }
+
+            $this.UsesNativeEngine = $false
+            $this.HasOpenAlias     = $false
+        } Elseif($this.HasOpenAlias -EQ $true) {
             $null = [MMWinMMNative]::SendCommand("stop $($this.MciAlias)")
             $null = [MMWinMMNative]::SendCommand("close $($this.MciAlias)")
 
@@ -410,6 +447,57 @@ Class MMMediaPlayer {
         [Context]$Ctx = $this.PrepareContext()
 
         $this.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionLoad, $Ctx)
+
+        If(($this.ShouldUseNativeEngine($Track) -EQ $true) -AND ($null -NE $this.NativeEngine)) {
+            $this.NativeEngine.SetVolume($this.Volume.Value, $this.IsMuted)
+            $this.ApplyEqualizerFromService()
+
+            [Boolean]$NativeOpened = $this.NativeEngine.LoadAndPlay($Track.FullPath)
+
+            If(($NativeOpened -EQ $false) -AND ($Track.Extension -EQ '.mp3')) {
+                Try {
+                    [String]$StagedMp3Path = $this.CreateStagedPlaybackFile($Track.FullPath, $true)
+                    $NativeOpened          = $this.NativeEngine.LoadAndPlay($StagedMp3Path)
+                } Catch {
+                    # FALL THROUGH TO SHORT PATH RETRY
+                }
+            }
+
+            If(($NativeOpened -EQ $false) -AND ($Track.FullPath.Length -GT 120)) {
+                [String]$ShortPath = [MMWinMMNative]::GetShortPath($Track.FullPath)
+
+                If(($ShortPath.Length -GT 0) -AND ($ShortPath -NE $Track.FullPath)) {
+                    $NativeOpened = $this.NativeEngine.LoadAndPlay($ShortPath)
+                }
+            }
+
+            If($NativeOpened -EQ $false) {
+                $this.CleanupStagedFile()
+
+                [String]$NativeErr = $this.NativeEngine.LastError
+                $this.LastError    = "Unable to open '$($Track.FileName)': $($NativeErr)"
+
+                $this.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionLoadFailed, $Ctx)
+                $this.NotifyStateChanged()
+
+                If($null -NE $this.OnError) {
+                    $this.OnError.Invoke($this.LastError)
+                }
+
+                Return $false
+            }
+
+            $this.UsesNativeEngine    = $true
+            $this.HasOpenAlias        = $true
+            $this.UsesWaveOutFallback = $false
+            $this.DurationMs          = [Math]::Max(0, $this.NativeEngine.DurationMs)
+            $Track.DurationMs         = $this.DurationMs
+
+            $this.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionPlayReady, $Ctx)
+            $this.NotifyStateChanged()
+
+            Return $true
+        }
 
         [String]$OpenTargetPath = ($Track.FullPath.Length -GT 120) ? [MMWinMMNative]::GetShortPath($Track.FullPath) : $Track.FullPath
         [String]$QuotedPath     = "`"$($OpenTargetPath)`""
@@ -456,6 +544,7 @@ Class MMMediaPlayer {
             Return $false
         }
 
+        $this.UsesNativeEngine    = $false
         $this.HasOpenAlias        = $true
         $this.UsesWaveOutFallback = $false
 
@@ -501,6 +590,21 @@ Class MMMediaPlayer {
             Return $false
         }
 
+        If(($this.UsesNativeEngine -EQ $true) -AND ($null -NE $this.NativeEngine)) {
+            $this.PositionMs = [Math]::Max(0, $this.NativeEngine.PositionMs)
+
+            If($this.NativeEngine.Pause() -EQ $false) {
+                $this.LastError = 'Pause failed on native audio engine.'
+
+                Return $false
+            }
+
+            $this.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionPause, $this.PrepareContext())
+            $this.NotifyStateChanged()
+
+            Return $true
+        }
+
         [Hashtable]$PosResult = [MMWinMMNative]::SendCommand("status $($this.MciAlias) position")
 
         If($PosResult.Success -EQ $true) {
@@ -528,6 +632,20 @@ Class MMMediaPlayer {
     [Boolean]Resume() {
         If($this.IsPaused() -EQ $false) {
             Return $false
+        }
+
+        If(($this.UsesNativeEngine -EQ $true) -AND ($null -NE $this.NativeEngine)) {
+            If($this.NativeEngine.Resume() -EQ $false) {
+                $this.LastError = 'Resume failed on native audio engine.'
+
+                Return $false
+            }
+
+            $this.NativeEngine.SetVolume($this.Volume.Value, $this.IsMuted)
+            $this.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionResume, $this.PrepareContext())
+            $this.NotifyStateChanged()
+
+            Return $true
         }
 
         [Hashtable]$ResumeResult = [MMWinMMNative]::SendCommand("resume $($this.MciAlias)")
@@ -598,6 +716,16 @@ Class MMMediaPlayer {
 
         [Int]$SafeTarget = ($this.DurationMs -GT 0) ? [Math]::Clamp($TargetMs, 0, $this.DurationMs) : [Math]::Max(0, $TargetMs)
 
+        If(($this.UsesNativeEngine -EQ $true) -AND ($null -NE $this.NativeEngine)) {
+            If($this.NativeEngine.Seek($SafeTarget) -EQ $false) {
+                Return $false
+            }
+
+            $this.PositionMs = $SafeTarget
+
+            Return $true
+        }
+
         If($this.IsPlaying() -EQ $true) {
             [Hashtable]$PlayFromResult = [MMWinMMNative]::SendCommand("play $($this.MciAlias) from $($SafeTarget)")
 
@@ -628,6 +756,14 @@ Class MMMediaPlayer {
     [Void]ApplyAudioVolume() {
         [Int]$EffectivePercent = ($this.IsMuted -EQ $true) ? 0 : $this.Volume.Value
 
+        If($null -NE $this.NativeEngine) {
+            $this.NativeEngine.SetVolume($this.Volume.Value, $this.IsMuted)
+        }
+
+        If($this.UsesNativeEngine -EQ $true) {
+            Return
+        }
+
         If($this.HasOpenAlias -EQ $true) {
             [Int]$MciVolume            = $EffectivePercent * 10
             [Hashtable]$VolCmdResult   = [MMWinMMNative]::SendCommand("setaudio $($this.MciAlias) volume to $($MciVolume)")
@@ -639,6 +775,8 @@ Class MMMediaPlayer {
             }
 
             $this.UsesWaveOutFallback = $true
+        } Else {
+            Return
         }
 
         If($this.HasSavedWaveVolume -EQ $false) {
@@ -676,6 +814,28 @@ Class MMMediaPlayer {
         [Double]$DeltaTime
     ) {
         If(($this.IsPlaying() -EQ $false) -OR ($this.HasOpenAlias -EQ $false)) {
+            Return
+        }
+
+        If(($this.UsesNativeEngine -EQ $true) -AND ($null -NE $this.NativeEngine)) {
+            [Int]$CurPos     = $this.NativeEngine.PositionMs
+            $this.PositionMs = ($this.DurationMs -GT 0) ? [Math]::Clamp($CurPos, 0, $this.DurationMs) : [Math]::Max(0, $CurPos)
+
+            If($this.NativeEngine.HasTrackEnded -EQ $true) {
+                $this.CloseCurrentAlias()
+
+                If($this.DurationMs -GT 0) {
+                    $this.PositionMs = $this.DurationMs
+                }
+
+                $this.PlaybackStateMachine.Trigger([SMPlaybackStateMachine]::TransitionTrackEnded, $this.PrepareContext())
+                $this.NotifyStateChanged()
+
+                If($null -NE $this.OnTrackEnded) {
+                    $this.OnTrackEnded.Invoke($this)
+                }
+            }
+
             Return
         }
 
@@ -724,6 +884,12 @@ Class MMMediaPlayer {
 
     [Void]Dispose() {
         $this.CloseCurrentAlias()
+
+        If($null -NE $this.NativeEngine) {
+            $this.NativeEngine.Dispose()
+            $this.NativeEngine = $null
+        }
+
         $this.CleanupStagedFile()
 
         If($this.HasSavedWaveVolume -EQ $true) {

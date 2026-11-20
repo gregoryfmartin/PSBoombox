@@ -19,6 +19,7 @@ Set-StrictMode -Version Latest
 Class UIPlaybackControlPanel : UIPanel {
     [UILabel]$TrackPrefixLabel
     [UILabel]$TrackValueLabel
+    [UILabel]$EqBadgeLabel
     [UILabel]$StatusBadgeLabel
     [UICellSpinner]$Spinner
     [UILabel]$TimePrefixLabel
@@ -51,7 +52,8 @@ Class UIPlaybackControlPanel : UIPanel {
         [UIPlaybackControlPanel]$SelfPanel = $this
 
         $this.TrackPrefixLabel = [UILabel]::new('Track : ', [ATCoordinates]::new(2, 3), [ColorLibrary]::TextColor)
-        $this.TrackValueLabel  = [UILabel]::new('(No track loaded)', [ATCoordinates]::new(2, 11), [ColorLibrary]::BoomboxMediaFileEntry, ($SafeWidth - 25))
+        $this.TrackValueLabel  = [UILabel]::new('(No track loaded)', [ATCoordinates]::new(2, 11), [ColorLibrary]::BoomboxMediaFileEntry, ($SafeWidth - 39))
+        $this.EqBadgeLabel     = [UILabel]::new('     [EQ:Off]', [ATCoordinates]::new(2, ($SafeWidth - 27)), [ColorLibrary]::BoomboxEqInactive, 13)
         $this.StatusBadgeLabel = [UILabel]::new('[STOPPED]', [ATCoordinates]::new(2, ($SafeWidth - 13)), [ColorLibrary]::BoomboxStatusStopped, 9)
         $this.Spinner          = [UICellSpinner]::new([ATCoordinates]::new(2, ($SafeWidth - 2)), 10, [ColorLibrary]::BoomboxSpinnerActive)
         $this.TimePrefixLabel  = [UILabel]::new('Time  : ', [ATCoordinates]::new(3, 3), [ColorLibrary]::TextColor)
@@ -125,9 +127,10 @@ Class UIPlaybackControlPanel : UIPanel {
 
         $this.UiElementListing[0]  = $this.TrackPrefixLabel
         $this.UiElementListing[1]  = $this.TrackValueLabel
-        $this.UiElementListing[2]  = $this.StatusBadgeLabel
-        $this.UiElementListing[3]  = $this.Spinner
-        $this.UiElementListing[4]  = $this.TimePrefixLabel
+        $this.UiElementListing[2]  = $this.EqBadgeLabel
+        $this.UiElementListing[3]  = $this.StatusBadgeLabel
+        $this.UiElementListing[4]  = $this.Spinner
+        $this.UiElementListing[5]  = $this.TimePrefixLabel
         $this.UiElementListing[10] = $this.Scrubber
         $this.UiElementListing[11] = $this.PrevButton
         $this.UiElementListing[12] = $this.PlayPauseButton
@@ -255,6 +258,31 @@ Class UIPlaybackControlPanel : UIPanel {
         $this.PlayPauseButton.SetLabel($PlayBtnText)
         $this.Scrubber.SetProgress($Player.PositionMs, $Player.DurationMs)
         $this.VolumeControl.SyncFromState($Player.Volume.Value, $Player.IsMuted)
+
+        [MMEqualizerService]$EqSvc = $Player.EqualizerService
+        [String]$RawEqBadge        = '[EQ:Off]'
+        [TrueColor]$EqColor        = [ColorLibrary]::BoomboxEqInactive
+
+        If(($null -NE $EqSvc) -AND ($EqSvc.Enabled -EQ $true)) {
+            If($Player.IsEqualizerBypassedForCurrentTrack() -EQ $true) {
+                $RawEqBadge = '[EQ:MIDI]'
+                $EqColor    = [ColorLibrary]::BoomboxEqBypassed
+            } Else {
+                [String]$ShortPreset = Format-TruncatedText $EqSvc.ActivePresetName 8
+                $RawEqBadge          = "[EQ:$($ShortPreset)]"
+                $EqColor             = [ColorLibrary]::BoomboxEqActive
+            }
+        }
+
+        [String]$PaddedEqBadge = $RawEqBadge.PadLeft(13, ' ')
+
+        If($this.EqBadgeLabel.UserData -NE $PaddedEqBadge) {
+            $this.EqBadgeLabel.SetText($PaddedEqBadge)
+        }
+
+        If([Object]::ReferenceEquals($this.EqBadgeLabel.ActiveColor, $EqColor) -EQ $false) {
+            $this.EqBadgeLabel.SetActiveColor($EqColor)
+        }
 
         If($null -NE $Playlist) {
             [String]$RepeatLabel = 'Rpt:Off'

@@ -93,6 +93,13 @@ Class PBStateMainPlayer : SMState {
                         Break
                     }
 
+                    If($KeyInfo.Key -EQ [ConsoleKey]::E) {
+                        $Core.AppState.Trigger('OpenEqualizer', $Context)
+                        $DidTransition = $true
+
+                        Break
+                    }
+
                     If($KeyInfo.Key -EQ [ConsoleKey]::Tab) {
                         [Boolean]$Reverse = (($KeyInfo.Modifiers -BAND [ConsoleModifiers]::Shift) -EQ [ConsoleModifiers]::Shift)
                         $Core.CycleFocusZone($Reverse, $Context)

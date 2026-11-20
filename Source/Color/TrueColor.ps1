@@ -280,6 +280,14 @@ Class ColorLibrary {
     Static [TrueColor]$BoomboxFooterStatus          = [ColorLibrary]::AppleCyanLight
     Static [TrueColor]$BoomboxFooterError           = [ColorLibrary]::AppleRedLight
     Static [TrueColor]$BoomboxSpinnerActive         = [ColorLibrary]::AppleGreenLight
+    Static [TrueColor]$BoomboxEqActive              = [ColorLibrary]::AppleMintLight
+    Static [TrueColor]$BoomboxEqInactive            = [ColorLibrary]::SlateGrey
+    Static [TrueColor]$BoomboxEqBypassed            = [ColorLibrary]::AppleYellowLight
+    Static [TrueColor]$BoomboxEqSliderPos           = [ColorLibrary]::AppleCyanLight
+    Static [TrueColor]$BoomboxEqSliderNeg           = [ColorLibrary]::AppleOrangeLight
+    Static [TrueColor]$BoomboxEqSliderZero          = [ColorLibrary]::GhostWhite
+    Static [TrueColor]$BoomboxEqSliderTrack         = [ColorLibrary]::DarkSlateGrey
+    Static [TrueColor]$BoomboxEqSliderFocused       = [ColorLibrary]::AppleYellowLight
 
     Static [TrueColor]GetRandom() {
         Return [TrueColor]::new(
