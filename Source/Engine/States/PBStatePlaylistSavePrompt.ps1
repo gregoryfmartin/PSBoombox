@@ -76,8 +76,14 @@ Class PBStatePlaylistSavePrompt : SMState {
                 $Core.AppState.Trigger('CloseSavePlaylistPrompt', [Context]::new(@{ [SMState]::ContextBoomboxCore = $Core }))
             }.GetNewClosure()
 
-            $Core.PathModal.Activate($Context)
+            Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+            $Core.PlaybackPanel.Draw()
+            $Core.DirectoryPanel.Draw()
+            $Core.PlaylistPanel.Draw()
             $Core.PathModal.ClearInterior()
+            Write-Host "$([ATControlSequences]::DrawOptimizeOff)" -NoNewline
+
+            $Core.PathModal.Activate($Context)
             $Core.PathModal.FocusElementByKey(1, $Context)
             $Core.FooterPanel.SetStatus('Enter playlist file path and press Enter')
         }

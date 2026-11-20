@@ -65,8 +65,14 @@ Class PBStateDirectoryPrompt : SMState {
                 $Core.AppState.Trigger('CloseDirectoryPrompt', [Context]::new(@{ [SMState]::ContextBoomboxCore = $Core }))
             }.GetNewClosure()
 
-            $Core.PathModal.Activate($Context)
+            Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+            $Core.PlaybackPanel.Draw()
+            $Core.DirectoryPanel.Draw()
+            $Core.PlaylistPanel.Draw()
             $Core.PathModal.ClearInterior()
+            Write-Host "$([ATControlSequences]::DrawOptimizeOff)" -NoNewline
+
+            $Core.PathModal.Activate($Context)
             $Core.PathModal.FocusElementByKey(1, $Context)
             $Core.FooterPanel.SetStatus('Enter target directory path and press Enter')
         }
