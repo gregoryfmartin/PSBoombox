@@ -378,7 +378,7 @@ Class MMMediaPlayer {
             Return $false
         }
 
-        Return ($Track.Extension -IN @('.mp3', '.wav', '.wma'))
+        Return ($Track.Extension -IN [MMDirectoryService]::NativeAudioExtensions)
     }
 
     [Boolean]IsEqualizerBypassedForCurrentTrack() {

@@ -13,12 +13,14 @@ Set-StrictMode -Version Latest
 # MM DIRECTORY SERVICE
 #
 # NAVIGATES FILESYSTEM DIRECTORIES AND ENUMERATES SUBDIRECTORIES, PLAYLISTS,
-# AND SUPPORTED WINDOWS MCI MEDIA FILES.
+# AND SUPPORTED AUDIO MEDIA FILES.
 #
 ###############################################################################
 
 Class MMDirectoryService {
-    Static [String[]]$SupportedAudioExtensions    = @('.mp3', '.wav', '.wma', '.mid', '.midi')
+    Static [String[]]$NativeAudioExtensions       = @('.mp3', '.wav', '.wma', '.flac', '.m4a', '.aac', '.mka', '.weba')
+    Static [String[]]$MidiAudioExtensions         = @('.mid', '.midi')
+    Static [String[]]$SupportedAudioExtensions    = @('.mp3', '.wav', '.wma', '.flac', '.m4a', '.aac', '.mka', '.weba', '.mid', '.midi')
     Static [String[]]$SupportedPlaylistExtensions = @('.m3u', '.m3u8', '.pls', '.wpl')
 
     [String]$CurrentPath

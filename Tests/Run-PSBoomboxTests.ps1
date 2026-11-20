@@ -803,6 +803,89 @@ If($null -NE $ModuleScope) {
         [Single[]]$MetA2 = $Analyzer.GetAudioMetrics()
         Assert-True ($MetA2[4] -GT $MetA1[4]) 'Pushing new audio block must invalidate FFT cache and update treble metric'
     }
+
+    & $InvokeCase -Name 'Tier 1 WMF Audio Formats (.flac, .m4a, .aac, .mka, .weba), 24-Bit PCM, and 5.1 Downmix' -Body {
+        [String[]]$NativeExts = @('.mp3', '.wav', '.wma', '.flac', '.m4a', '.aac', '.mka', '.weba')
+        [String[]]$MidiExts   = @('.mid', '.midi')
+
+        [MMMediaPlayer]$ProbePlayer = [MMMediaPlayer]::new()
+        Try {
+            Foreach($Ext in $NativeExts) {
+                [String]$FakePath = "C:\audio\sample$($Ext)"
+                Assert-True ([MMDirectoryService]::IsSupportedAudioFile($FakePath)) "DirectoryService must support $($Ext)"
+                Assert-True ($ProbePlayer.ShouldUseNativeEngine([MMTrackInfo]::new($FakePath))) "MediaPlayer must route $($Ext) to NativeAudioEngine"
+            }
+            Foreach($Ext in $MidiExts) {
+                [String]$FakeMidi = "C:\audio\sample$($Ext)"
+                Assert-True ([MMDirectoryService]::IsSupportedAudioFile($FakeMidi)) "DirectoryService must support $($Ext)"
+                Assert-False ($ProbePlayer.ShouldUseNativeEngine([MMTrackInfo]::new($FakeMidi))) "MediaPlayer must route $($Ext) to MCI"
+            }
+            Assert-False ([MMDirectoryService]::IsSupportedAudioFile('C:\audio\notes.txt')) 'Unsupported .txt must return false'
+            Assert-False ([MMDirectoryService]::IsSupportedAudioFile('C:\audio\track.ogg')) 'Unsupported .ogg must return false'
+        } Finally {
+            $ProbePlayer.Dispose()
+        }
+
+        [String]$TempDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_Tier1Test_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $TempDir -ItemType Directory -Force
+
+        Try {
+            [String]$FlacFile    = Join-Path $TempDir 'tone_440.flac'
+            [String]$Wav24File   = Join-Path $TempDir 'stereo_24bit.wav'
+            [String]$Wav51File   = Join-Path $TempDir 'surround_center_only.wav'
+
+            New-TestFlacFile -FilePath $FlacFile -FrameCount 50 -FrequencyHz 440.0
+            New-TestWavFile -FilePath $Wav24File -DurationMs 550 -SampleRate 44100 -Channels 2 -BitsPerSample 24 -FrequencyHz 440.0
+            New-TestWavFile -FilePath $Wav51File -DurationMs 600 -SampleRate 44100 -Channels 6 -BitsPerSample 16 -FrequencyHz 440.0 -ActiveChannel 2
+
+            Foreach($Ext in @('.m4a', '.aac', '.mka', '.weba')) {
+                [File]::WriteAllBytes((Join-Path $TempDir "stub$($Ext)"), [Byte[]]@(0x00, 0x01))
+            }
+
+            [MMDirectoryService]$DirSvc = [MMDirectoryService]::new($TempDir)
+            Assert-Equal ($DirSvc.GetMediaFileCount()) 7 'DirectoryService must discover .flac, .wav (x2), .m4a, .aac, .mka, and .weba files'
+
+            [MMMediaPlayer]$Player = [MMMediaPlayer]::new()
+            Try {
+                # 1. LIVE NATIVE WMF FLAC PLAYBACK, SEEKING & POST-EQ FFT ANALYSIS
+                Assert-True ($Player.LoadAndPlay([MMTrackInfo]::new($FlacFile))) "FLAC playback failed: $($Player.LastError)"
+                Assert-True $Player.UsesNativeEngine 'FLAC must play through NativeAudioEngine'
+                Assert-True ($Player.IsPlaying()) 'FLAC player state must be Playing'
+                Assert-True ($Player.DurationMs -GT 400) "FLAC DurationMs must be > 400, got $($Player.DurationMs)"
+                Assert-True ($Player.Pause()) 'FLAC Pause must succeed'
+                Assert-True ($Player.Seek(200)) 'FLAC Seek must succeed'
+                Assert-True ($Player.Resume()) 'FLAC Resume must succeed'
+
+                Start-Sleep -Milliseconds 120
+                [Single[]]$FlacSpec = $Player.GetSpectrumSnapshot(32)
+                Assert-Equal $FlacSpec.Length 32 'FLAC spectrum snapshot length mismatch'
+                [Single]$FlacPeak = 0.0
+                Foreach($Bin in $FlacSpec) { If($Bin -GT $FlacPeak) { $FlacPeak = $Bin } }
+                Assert-True ($FlacPeak -GT 0.1) "FLAC FFT spectrum must show post-EQ energy, got peak $($FlacPeak)"
+                $Player.Stop()
+
+                # 2. LIVE 24-BIT STEREO WAV PLAYBACK
+                Assert-True ($Player.LoadAndPlay([MMTrackInfo]::new($Wav24File))) "24-bit WAV playback failed: $($Player.LastError)"
+                Assert-True ($Player.IsPlaying()) '24-bit WAV should be Playing'
+                Start-Sleep -Milliseconds 120
+                [Single[]]$Metrics24 = $Player.GetAudioMetrics()
+                Assert-True ($Metrics24[0] -GT 0.05) "24-bit WAV must decode non-zero audio, got LeftRms=$($Metrics24[0])"
+                $Player.Stop()
+
+                # 3. LIVE 6-CHANNEL (5.1) CENTER-ONLY WAV -> ITU-R STEREO DOWNMIX VERIFICATION
+                Assert-True ($Player.LoadAndPlay([MMTrackInfo]::new($Wav51File))) "5.1 WAV playback failed: $($Player.LastError)"
+                Assert-True ($Player.IsPlaying()) '5.1 WAV should be Playing'
+                Start-Sleep -Milliseconds 120
+                [Single[]]$Metrics51 = $Player.GetAudioMetrics()
+                Assert-True (($Metrics51[0] -GT 0.05) -AND ($Metrics51[1] -GT 0.05)) "5.1 Center channel downmix must fold audio into L/R RMS (got L=$($Metrics51[0]), R=$($Metrics51[1]))"
+                $Player.Stop()
+            } Finally {
+                $Player.Dispose()
+            }
+        } Finally {
+            Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
+        }
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {

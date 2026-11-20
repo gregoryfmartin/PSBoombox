@@ -750,14 +750,17 @@ namespace PSBoombox {
         private static readonly Guid MF_MT_SUBTYPE = new Guid("f7e34c9a-42e8-4714-b74b-cb29d72c35e5");
         private static readonly Guid MFMediaType_Audio = new Guid("73647561-0000-0010-8000-00aa00389b71");
         private static readonly Guid MFAudioFormat_Float = new Guid("00000003-0000-0010-8000-00aa00389b71");
+        private static readonly Guid MFAudioFormat_PCM = new Guid("00000001-0000-0010-8000-00aa00389b71");
         private static readonly Guid MF_MT_AUDIO_NUM_CHANNELS = new Guid("37e48bf5-645e-4c5b-89de-ada9e29b696a");
         private static readonly Guid MF_MT_AUDIO_SAMPLES_PER_SECOND = new Guid("5faeeae7-0290-4c31-9e8a-c534f68d9dba");
+        private static readonly Guid MF_MT_AUDIO_BITS_PER_SAMPLE = new Guid("f2deb57f-40fa-4764-aa33-ed4f2d1ff669");
         private static readonly Guid MF_PD_DURATION = new Guid("6c990d33-bb8e-477a-8598-0d5d96fcd88a");
 
         private const int MF_SOURCE_READER_ALL_STREAMS = unchecked((int)0xFFFFFFFE);
         private const int MF_SOURCE_READER_FIRST_AUDIO_STREAM = unchecked((int)0xFFFFFFFD);
         private const int MF_SOURCE_READER_MEDIASOURCE = unchecked((int)0xFFFFFFFF);
         private const int MF_SOURCE_READERF_ENDOFSTREAM = 0x00000002;
+        private const int MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED = 0x00000020;
         private const uint MF_SDK_VERSION = 0x00020070;
         private const uint WAVE_MAPPER = unchecked((uint)-1);
         private const uint CALLBACK_EVENT = 0x00050000;
@@ -825,6 +828,8 @@ namespace PSBoombox {
         private int _sourceChannels = 2;
         private int _outputChannels = 2;
         private int _sampleRate = 44100;
+        private bool _sourceIsFloat = true;
+        private int _sourceBitsPerSample = 32;
         private int _framesPerBuffer = 735;
         private bool _endOfStream;
         private long _seekBaseMs;
@@ -1017,6 +1022,86 @@ namespace PSBoombox {
             }
         }
 
+        private bool ConfigureReaderOutputType(
+            IMFSourceReader reader,
+            uint requestedSampleRate,
+            out int sourceChannels,
+            out int sampleRate,
+            out bool isFloat,
+            out int bitsPerSample,
+            out string errorMsg
+        ) {
+            sourceChannels = 2;
+            sampleRate = 44100;
+            isFloat = true;
+            bitsPerSample = 32;
+            errorMsg = string.Empty;
+
+            bool configured = false;
+            int lastHr = 0;
+
+            Guid[] subTypes = new Guid[] { MFAudioFormat_Float, MFAudioFormat_PCM };
+            for (int attempt = 0; attempt < subTypes.Length; attempt++) {
+                IMFAttributes targetType = null;
+                try {
+                    int hr = NativeImports.MFCreateMediaType(out targetType);
+                    if (hr < 0 || targetType == null) {
+                        errorMsg = string.Format("MFCreateMediaType failed (0x{0:X8}).", hr);
+                        return false;
+                    }
+
+                    Guid majorType = MFMediaType_Audio;
+                    Guid subType = subTypes[attempt];
+                    targetType.SetGUID(MF_MT_MAJOR_TYPE, ref majorType);
+                    targetType.SetGUID(MF_MT_SUBTYPE, ref subType);
+                    if (requestedSampleRate > 0) {
+                        targetType.SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, requestedSampleRate);
+                    }
+
+                    lastHr = reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, IntPtr.Zero, targetType);
+                    if (lastHr >= 0) {
+                        configured = true;
+                        break;
+                    }
+                } finally {
+                    if (targetType != null) Marshal.ReleaseComObject(targetType);
+                }
+            }
+
+            if (!configured) {
+                errorMsg = string.Format("SetCurrentMediaType(Float/PCM) failed (0x{0:X8}).", lastHr);
+                return false;
+            }
+
+            IMFAttributes actualType = null;
+            try {
+                int hr = reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, out actualType);
+                if (hr < 0 || actualType == null) {
+                    errorMsg = string.Format("GetCurrentMediaType failed (0x{0:X8}).", hr);
+                    return false;
+                }
+
+                Guid actualSubType = MFAudioFormat_Float;
+                if (actualType.GetGUID(MF_MT_SUBTYPE, out actualSubType) >= 0) {
+                    isFloat = (actualSubType == MFAudioFormat_Float);
+                }
+
+                uint ch = 2;
+                uint sr = 44100;
+                uint bps = isFloat ? 32u : 16u;
+                actualType.GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, out ch);
+                actualType.GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, out sr);
+                actualType.GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, out bps);
+
+                sourceChannels = Math.Max(1, (int)ch);
+                sampleRate = Math.Max(8000, (int)sr);
+                bitsPerSample = (bps == 8 || bps == 16 || bps == 24 || bps == 32) ? (int)bps : (isFloat ? 32 : 16);
+                return true;
+            } finally {
+                if (actualType != null) Marshal.ReleaseComObject(actualType);
+            }
+        }
+
         private bool ExecuteLoad(string filePath, out string errorMsg) {
             errorMsg = string.Empty;
             ExecuteStop();
@@ -1032,8 +1117,6 @@ namespace PSBoombox {
             }
 
             IMFSourceReader reader = null;
-            IMFAttributes targetType = null;
-            IMFAttributes actualType = null;
 
             try {
                 int hr = NativeImports.MFCreateSourceReaderFromURL(filePath, IntPtr.Zero, out reader);
@@ -1049,37 +1132,11 @@ namespace PSBoombox {
                     return false;
                 }
 
-                hr = NativeImports.MFCreateMediaType(out targetType);
-                if (hr < 0 || targetType == null) {
-                    errorMsg = string.Format("MFCreateMediaType failed (0x{0:X8}).", hr);
+                if (!ConfigureReaderOutputType(reader, 0, out _sourceChannels, out _sampleRate, out _sourceIsFloat, out _sourceBitsPerSample, out errorMsg)) {
                     return false;
                 }
 
-                Guid majorType = MFMediaType_Audio;
-                Guid subType = MFAudioFormat_Float;
-                targetType.SetGUID(MF_MT_MAJOR_TYPE, ref majorType);
-                targetType.SetGUID(MF_MT_SUBTYPE, ref subType);
-
-                hr = reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, IntPtr.Zero, targetType);
-                if (hr < 0) {
-                    errorMsg = string.Format("SetCurrentMediaType(Float) failed (0x{0:X8}).", hr);
-                    return false;
-                }
-
-                hr = reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, out actualType);
-                if (hr < 0 || actualType == null) {
-                    errorMsg = string.Format("GetCurrentMediaType failed (0x{0:X8}).", hr);
-                    return false;
-                }
-
-                uint channels = 2;
-                uint sampleRate = 44100;
-                actualType.GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, out channels);
-                actualType.GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, out sampleRate);
-
-                _sourceChannels = Math.Max(1, (int)channels);
                 _outputChannels = (_sourceChannels == 1) ? 1 : 2;
-                _sampleRate = Math.Max(8000, (int)sampleRate);
                 _framesPerBuffer = Math.Max(256, _sampleRate / 60);
 
                 int durationMs = 0;
@@ -1114,6 +1171,27 @@ namespace PSBoombox {
                     IntPtr.Zero,
                     CALLBACK_EVENT
                 );
+
+                if ((mmRes != 0 || hWave == IntPtr.Zero) && _sampleRate != 48000) {
+                    string resampleErr;
+                    if (ConfigureReaderOutputType(reader, 48000, out _sourceChannels, out _sampleRate, out _sourceIsFloat, out _sourceBitsPerSample, out resampleErr)) {
+                        _outputChannels = (_sourceChannels == 1) ? 1 : 2;
+                        _framesPerBuffer = Math.Max(256, _sampleRate / 60);
+                        wfx.nChannels = (ushort)_outputChannels;
+                        wfx.nSamplesPerSec = (uint)_sampleRate;
+                        wfx.nBlockAlign = (ushort)(_outputChannels * 2);
+                        wfx.nAvgBytesPerSec = (uint)(_sampleRate * _outputChannels * 2);
+                        mmRes = NativeImports.waveOutOpen(
+                            out hWave,
+                            WAVE_MAPPER,
+                            ref wfx,
+                            _waveEvent.SafeWaitHandle.DangerousGetHandle(),
+                            IntPtr.Zero,
+                            CALLBACK_EVENT
+                        );
+                    }
+                }
+
                 if (mmRes != 0 || hWave == IntPtr.Zero) {
                     errorMsg = string.Format("waveOutOpen failed (error {0}).", mmRes);
                     return false;
@@ -1152,8 +1230,6 @@ namespace PSBoombox {
                 ExecuteStop();
                 return false;
             } finally {
-                if (actualType != null) Marshal.ReleaseComObject(actualType);
-                if (targetType != null) Marshal.ReleaseComObject(targetType);
                 if (reader != null) Marshal.ReleaseComObject(reader);
             }
         }
@@ -1425,6 +1501,78 @@ namespace PSBoombox {
             }
         }
 
+        private static float[] DecodeLockedBufferToFloats(IntPtr dataPtr, uint curLen, bool isFloat, int bitsPerSample) {
+            if (isFloat) {
+                int floatCount = (int)(curLen / 4);
+                float[] rawFloats = new float[floatCount];
+                Marshal.Copy(dataPtr, rawFloats, 0, floatCount);
+                return rawFloats;
+            }
+
+            byte[] rawBytes = new byte[curLen];
+            Marshal.Copy(dataPtr, rawBytes, 0, (int)curLen);
+            int bytesPerSample = Math.Max(1, bitsPerSample / 8);
+            int sampleCount = (int)(curLen / bytesPerSample);
+            float[] floats = new float[sampleCount];
+
+            if (bitsPerSample == 16) {
+                for (int i = 0; i < sampleCount; i++) {
+                    int b = i * 2;
+                    short s = (short)(rawBytes[b] | (rawBytes[b + 1] << 8));
+                    floats[i] = s / 32768.0f;
+                }
+            } else if (bitsPerSample == 24) {
+                for (int i = 0; i < sampleCount; i++) {
+                    int b = i * 3;
+                    int s = rawBytes[b] | (rawBytes[b + 1] << 8) | (((sbyte)rawBytes[b + 2]) << 16);
+                    floats[i] = s / 8388608.0f;
+                }
+            } else if (bitsPerSample == 32) {
+                for (int i = 0; i < sampleCount; i++) {
+                    int b = i * 4;
+                    int s = rawBytes[b] | (rawBytes[b + 1] << 8) | (rawBytes[b + 2] << 16) | (rawBytes[b + 3] << 24);
+                    floats[i] = (float)(s / 2147483648.0);
+                }
+            } else {
+                for (int i = 0; i < sampleCount; i++) {
+                    floats[i] = (rawBytes[i] - 128) / 128.0f;
+                }
+            }
+
+            return floats;
+        }
+
+        private static void DownmixFrameToStereo(float[] rawFloats, int srcBase, int sourceChannels, out float left, out float right) {
+            const float InvSqrt2 = 0.70710678f;
+
+            if (sourceChannels == 3) {
+                // FL, FR, FC
+                float fc = rawFloats[srcBase + 2] * InvSqrt2;
+                left = (rawFloats[srcBase] + fc) * InvSqrt2;
+                right = (rawFloats[srcBase + 1] + fc) * InvSqrt2;
+            } else if (sourceChannels == 4) {
+                // FL, FR, BL, BR
+                left = (rawFloats[srcBase] + (rawFloats[srcBase + 2] * InvSqrt2)) * InvSqrt2;
+                right = (rawFloats[srcBase + 1] + (rawFloats[srcBase + 3] * InvSqrt2)) * InvSqrt2;
+            } else if (sourceChannels == 5) {
+                // FL, FR, FC, BL, BR
+                float fc = rawFloats[srcBase + 2] * InvSqrt2;
+                left = (rawFloats[srcBase] + fc + (rawFloats[srcBase + 3] * InvSqrt2)) * 0.58f;
+                right = (rawFloats[srcBase + 1] + fc + (rawFloats[srcBase + 4] * InvSqrt2)) * 0.58f;
+            } else {
+                // 5.1 (FL, FR, FC, LFE, BL, BR) + OPTIONAL 7.1 (SL, SR)
+                float fc = rawFloats[srcBase + 2] * InvSqrt2;
+                float lSur = rawFloats[srcBase + 4] * InvSqrt2;
+                float rSur = (sourceChannels >= 6) ? (rawFloats[srcBase + 5] * InvSqrt2) : 0.0f;
+                if (sourceChannels >= 8) {
+                    lSur += rawFloats[srcBase + 6] * 0.5f;
+                    rSur += rawFloats[srcBase + 7] * 0.5f;
+                }
+                left = (rawFloats[srcBase] + fc + lSur) * 0.58f;
+                right = (rawFloats[srcBase + 1] + fc + rSur) * 0.58f;
+            }
+        }
+
         private int FillSlotFromDecoder(WaveBufferSlot slot) {
             int neededSamples = _framesPerBuffer * _outputChannels;
             if (_dspWorkBuffer.Length < neededSamples) {
@@ -1465,6 +1613,26 @@ namespace PSBoombox {
                     break;
                 }
 
+                if ((streamFlags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) != 0 && _reader != null) {
+                    IMFAttributes changedType = null;
+                    try {
+                        if (_reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, out changedType) >= 0 && changedType != null) {
+                            Guid actualSubType = MFAudioFormat_Float;
+                            if (changedType.GetGUID(MF_MT_SUBTYPE, out actualSubType) >= 0) {
+                                _sourceIsFloat = (actualSubType == MFAudioFormat_Float);
+                            }
+                            uint ch = (uint)_sourceChannels;
+                            uint bps = (uint)_sourceBitsPerSample;
+                            changedType.GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, out ch);
+                            changedType.GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, out bps);
+                            _sourceChannels = Math.Max(1, (int)ch);
+                            _sourceBitsPerSample = (bps == 8 || bps == 16 || bps == 24 || bps == 32) ? (int)bps : (_sourceIsFloat ? 32 : 16);
+                        }
+                    } finally {
+                        if (changedType != null) Marshal.ReleaseComObject(changedType);
+                    }
+                }
+
                 if ((streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) != 0) {
                     _endOfStream = true;
                 }
@@ -1483,13 +1651,12 @@ namespace PSBoombox {
                         IntPtr dataPtr;
                         uint maxLen;
                         uint curLen;
-                        if (mediaBuf.Lock(out dataPtr, out maxLen, out curLen) >= 0 && curLen >= 4) {
+                        int bytesPerSample = _sourceIsFloat ? 4 : Math.Max(1, _sourceBitsPerSample / 8);
+                        if (mediaBuf.Lock(out dataPtr, out maxLen, out curLen) >= 0 && curLen >= (uint)bytesPerSample) {
                             try {
-                                int floatCount = (int)(curLen / 4);
-                                float[] rawFloats = new float[floatCount];
-                                Marshal.Copy(dataPtr, rawFloats, 0, floatCount);
-
-                                int frames = floatCount / _sourceChannels;
+                                float[] rawFloats = DecodeLockedBufferToFloats(dataPtr, curLen, _sourceIsFloat, _sourceBitsPerSample);
+                                int sampleCount = rawFloats.Length;
+                                int frames = sampleCount / _sourceChannels;
                                 int normalizedCount = frames * _outputChannels;
                                 if (_pendingFloat.Length < normalizedCount) {
                                     _pendingFloat = new float[normalizedCount];
@@ -1497,13 +1664,25 @@ namespace PSBoombox {
 
                                 if (_sourceChannels == _outputChannels) {
                                     Array.Copy(rawFloats, 0, _pendingFloat, 0, normalizedCount);
-                                } else {
-                                    // DOWNMIX MULTICHANNEL (>2) TO STEREO SAFELY
+                                } else if (_sourceChannels == 1 && _outputChannels == 2) {
                                     for (int f = 0; f < frames; f++) {
-                                        int srcBase = f * _sourceChannels;
-                                        float left = rawFloats[srcBase];
-                                        float right = (_sourceChannels >= 2) ? rawFloats[srcBase + 1] : left;
-                                        _pendingFloat[(f * 2)] = left;
+                                        float mono = rawFloats[f];
+                                        _pendingFloat[f * 2] = mono;
+                                        _pendingFloat[(f * 2) + 1] = mono;
+                                    }
+                                } else if (_outputChannels == 1) {
+                                    for (int f = 0; f < frames; f++) {
+                                        float left;
+                                        float right;
+                                        DownmixFrameToStereo(rawFloats, f * _sourceChannels, _sourceChannels, out left, out right);
+                                        _pendingFloat[f] = (left + right) * 0.5f;
+                                    }
+                                } else {
+                                    for (int f = 0; f < frames; f++) {
+                                        float left;
+                                        float right;
+                                        DownmixFrameToStereo(rawFloats, f * _sourceChannels, _sourceChannels, out left, out right);
+                                        _pendingFloat[f * 2] = left;
                                         _pendingFloat[(f * 2) + 1] = right;
                                     }
                                 }

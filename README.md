@@ -8,7 +8,7 @@ A text-based media player for Windows built with PowerShell 7+, featuring a 24-b
 
 ## Features
 
-- **Native Windows Media Engine & Real-Time 10-Band Equalizer**: Streams `.mp3`, `.wav`, and `.wma` audio in real time through Windows Media Foundation (`mfplat.dll` / `mfreadwrite.dll`), a 10-band peaking biquad equalizer + preamp + soft limiter (`Source/Media/MMEqualizerEngineNative.ps1`), and ring-buffered `winmm.dll` `waveOut*` playback for immediate slider and preset response. MIDI playback (`.mid` / `.midi`) and MCI/mixer interop use pure PowerShell `System.Reflection.Emit` (`DefinePInvokeMethod`) bindings in `MMWinMMNative.ps1`.
+- **Native Windows Media Engine & Real-Time 10-Band Equalizer**: Streams `.mp3`, `.wav`, `.wma`, `.flac`, `.m4a`, `.aac`, `.mka`, and `.weba` audio in real time through Windows Media Foundation (`mfplat.dll` / `mfreadwrite.dll`), a 10-band peaking biquad equalizer + preamp + soft limiter (`Source/Media/MMEqualizerEngineNative.ps1`), and ring-buffered `winmm.dll` `waveOut*` playback for immediate slider and preset response. MIDI playback (`.mid` / `.midi`) and MCI/mixer/timer interop use pure PowerShell `System.Reflection.Emit` (`DefinePInvokeMethod`) bindings in `MMWinMMNative.ps1`.
 - **10-Band ISO EQ + Presets + Persistence**: Includes a Winamp-style `31 Hz`–`16 kHz` equalizer with `-12 dB` to `+12 dB` (`1 dB` steps), preamp slider, 9 built-in presets (`Flat`, `Bass Boost`, `Rock`, `Pop`, `Jazz`, `Classical`, `Vocal`, `Electronic`, `Treble Boost`), unlimited named custom user presets, automatic `Custom` switching on manual edits, and automatic JSON persistence across sessions in `%APPDATA%\PSBoombox\equalizer.json`.
 - **Full-Buffer Audio Visualizer Mode (`V`)**: Switches to a full-screen 60 FPS post-EQ visualization canvas (powered by compiled C# ANSI cell-diff rendering and `1 ms` `winmm.dll` timer precision) driven by a real-time 1024-point radix-2 FFT and stereo waveform analyzer, with forward-only `Tab` cycling across five visualizers (**Spectrum Analyzer**, **Mirrored Spectrum**, **Braille Oscilloscope**, **Radial Pulse**, and **Spectrogram Waterfall**).
 - **24-Bit TrueColor Synchronized TUI**: Renders rounded box-drawing borders (`╭─╮│╰─╯`), color-coded browser entries, a top-panel EQ active badge (`[EQ:Rock]` / `[EQ:Off]` / `[EQ:MIDI]`), a seekable track progress scrubber, an animated braille activity spinner, and synchronized terminal frame updates (`\e[?2026h` / `\e[?2026l`).
@@ -88,10 +88,13 @@ Start-PSBoombox -Path 'D:\Audio' -Playlist 'D:\Playlists\Favorites.pls'
 
 | Extension | Format | Playback Engine & EQ Support |
 | --- | --- | --- |
-| `.mp3` | MPEG Audio Layer III | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ *(falls back to MPEG frame-sync staging if needed)* |
-| `.wav` | RIFF WAVE PCM | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ |
-| `.wma` | Windows Media Audio | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ |
-| `.mid`, `.midi` | Standard MIDI | Played via Windows MCI (`winmm.dll`); EQ is cleanly bypassed (`[EQ:MIDI]`) |
+| `.mp3` | MPEG Audio Layer III | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers *(falls back to MPEG frame-sync staging if needed)* |
+| `.wav` | RIFF WAVE PCM *(8/16/24/32-bit, up to 7.1 ch)* | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
+| `.wma` | Windows Media Audio | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
+| `.flac` | Free Lossless Audio Codec | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
+| `.m4a`, `.aac` | MPEG-4 Audio (AAC / ALAC) & ADTS AAC | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
+| `.mka`, `.weba` | Matroska / WebM Audio | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
+| `.mid`, `.midi` | Standard MIDI | Played via Windows MCI (`winmm.dll`); EQ and Visualizer Mode are cleanly bypassed (`[EQ:MIDI]`) |
 
 ### Playlist Formats
 
@@ -191,7 +194,7 @@ Press `E` from anywhere on the main screen to open the centered **Equalizer (10-
 
 Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer Mode** (`PSBoombox` always starts in Playlist Mode on launch):
 
-- **Active Playback Required**: A decoded audio track (`.mp3`, `.wav`, `.wma`) must be actively playing to enter Visualizer Mode; if stopped or paused, the status bar prompts you to start playback first.
+- **Active Playback Required**: A decoded audio track (`.mp3`, `.wav`, `.wma`, `.flac`, `.m4a`, `.aac`, `.mka`, `.weba`) must be actively playing to enter Visualizer Mode; if stopped or paused, the status bar prompts you to start playback first.
 - **MIDI Protection**: Attempting to enter Visualizer Mode while playing a `.mid` / `.midi` track (or advancing to a MIDI track while in Visualizer Mode) displays a centered modal notice explaining that MIDI synthesis does not produce decodable PCM audio buffers.
 - **Post-EQ Real-Time Visuals & Layout**: Taps live post-EQ audio from the streaming DSP pipeline across the full canvas (`Rows 1 .. Height - 2`), displaying the currently playing track name in the bottom-left and concise controls on the bottom row.
 - **5 Built-In Visualizations (`Tab`)**: Press `Tab` to cycle forward through the visualizers (wrapping cleanly from the last visualization back to the first; reverse `Shift+Tab` cycling is disabled):
@@ -349,7 +352,7 @@ Run the automated test suite from the repository root using PowerShell 7 (`pwsh`
 pwsh -NoProfile -File .\Tests\Run-PSBoomboxTests.ps1
 ```
 
-The test harness validates 13 test suites covering:
+The test harness validates 14 test suites covering:
 1. Module manifest metadata, `Core` edition enforcement, and `Start-PSBoombox` parameter exports.
 2. Coding standard and pure native PowerShell compliance across all files under `Source/` and `Public/` (verifying `Add-Type` is used exclusively inside `Source/Media/MMEqualizerEngineNative.ps1`, `Set-StrictMode -Version Latest`, and `ColorLibrary` rules).
 3. UI, Playback, and Application finite state machine transitions.
@@ -362,4 +365,5 @@ The test harness validates 13 test suites covering:
 10. Equalizer preset management (`9` built-in profiles, custom named user presets, built-in protection, and `equalizer.json` startup persistence).
 11. 1024-point FFT audio analysis (`100 Hz` bass bin vs. `4 kHz` treble bin separation) and post-EQ spectrum reactivity.
 12. Visualizer Mode state machine flow (stopped guard, MIDI notice modal, live `.wav` entry, bottom-left track label, forward-only `Tab` wrap cycling, `E` lockout, global volume/mute, `V` exit, and stop auto-return).
-13. 60 FPS visualizer pacing (`TargetFps` switching, `winmm.dll` 1 ms timer P/Invoke), `AudioAnalyzer` FFT version caching, native cell-diff emission, and `< 10 ms/frame` render budget at `160×48`.
+13. 60 FPS visualizer pacing (`TargetFps` switching, `winmm.dll` 1 ms timer P/Invoke), `AudioAnalyzer` FFT version caching, native cell-diff emission, Unicode glyph rendering, and `< 10 ms/frame` render budget at `160×48`.
+14. Tier 1 WMF audio format routing & discovery (`.flac`, `.m4a`, `.aac`, `.mka`, `.weba`) plus live `.flac` playback/seeking/FFT analysis, 24-bit PCM decoding, and 5.1 ITU-R Center-channel downmixing.
