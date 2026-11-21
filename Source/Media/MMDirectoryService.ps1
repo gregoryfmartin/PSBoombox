@@ -243,4 +243,73 @@ Class MMDirectoryService {
 
         Return $Tracks
     }
+
+    [List[MMTrackInfo]]GetMediaTracksInDirectory(
+        [String]$TargetPath
+    ) {
+        $this.LastError = ''
+
+        [List[MMTrackInfo]]$Tracks = [List[MMTrackInfo]]::new()
+
+        If(($null -EQ $TargetPath) -OR ($TargetPath.Trim().Length -EQ 0)) {
+            $this.LastError = 'Directory path cannot be empty.'
+
+            Return $Tracks
+        }
+
+        [String]$ResolvedPath = ''
+
+        Try {
+            [String]$Candidate = $TargetPath.Trim()
+
+            If([Path]::IsPathRooted($Candidate) -EQ $false) {
+                [String]$BaseDir = ($this.CurrentPath.Length -GT 0) ? $this.CurrentPath : (Get-Location).Path
+                $Candidate       = [Path]::Combine($BaseDir, $Candidate)
+            }
+
+            $ResolvedPath = [Path]::GetFullPath($Candidate)
+        } Catch {
+            $this.LastError = "Invalid directory path: $($_.Exception.Message)"
+
+            Return $Tracks
+        }
+
+        If([Directory]::Exists($ResolvedPath) -EQ $false) {
+            $this.LastError = "Directory not found: $($ResolvedPath)"
+
+            Return $Tracks
+        }
+
+        Try {
+            [DirectoryInfo]$DirInfo     = [DirectoryInfo]::new($ResolvedPath)
+            [List[FileInfo]]$MediaFiles = [List[FileInfo]]::new()
+
+            Foreach($FileItem in $DirInfo.GetFiles()) {
+                If([MMDirectoryService]::IsSupportedAudioFile($FileItem.FullName) -EQ $true) {
+                    $MediaFiles.Add($FileItem)
+                }
+            }
+
+            [Comparison[FileInfo]]$FileSorter = {
+                Param(
+                    [FileInfo]$Left,
+                    [FileInfo]$Right
+                )
+
+                Return [StringComparer]::OrdinalIgnoreCase.Compare($Left.Name, $Right.Name)
+            }
+
+            $MediaFiles.Sort($FileSorter)
+
+            Foreach($AudioFile in $MediaFiles) {
+                $Tracks.Add([MMTrackInfo]::new($AudioFile.FullName))
+            }
+        } Catch {
+            $this.LastError = "Unable to read directory '$($ResolvedPath)': $($_.Exception.Message)"
+
+            Return [List[MMTrackInfo]]::new()
+        }
+
+        Return $Tracks
+    }
 }

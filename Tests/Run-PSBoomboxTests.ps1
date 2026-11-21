@@ -1072,6 +1072,92 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
         }
     }
+
+    & $InvokeCase -Name 'Directory Entry Bulk Add (A Key on [DIR])' -Body {
+        [String]$RootTemp    = Join-Path ([Path]::GetTempPath()) "PSBoombox_DirAddTest_$([Guid]::NewGuid().ToString('N'))"
+        [String]$SubAlbum    = Join-Path $RootTemp 'SubAlbum'
+        [String]$SubNested   = Join-Path $SubAlbum 'Nested'
+        [String]$EmptyFolder = Join-Path $RootTemp 'EmptyFolder'
+        [String]$DeepOnly    = Join-Path $EmptyFolder 'DeepOnly'
+        $null = New-Item -Path $SubNested -ItemType Directory -Force
+        $null = New-Item -Path $DeepOnly -ItemType Directory -Force
+
+        Try {
+            [String]$RootSong    = Join-Path $RootTemp 'root_song.wav'
+            [String]$SubTrackA   = Join-Path $SubAlbum 'a_first.wav'
+            [String]$SubTrackB   = Join-Path $SubAlbum 'b_second.wav'
+            [String]$SubNotes    = Join-Path $SubAlbum 'notes.txt'
+            [String]$NestedTrack = Join-Path $SubNested 'deep.wav'
+            [String]$EmptyReadme = Join-Path $EmptyFolder 'readme.txt'
+            [String]$HiddenTrack = Join-Path $DeepOnly 'hidden.wav'
+
+            New-TestWavFile -FilePath $RootSong -DurationMs 400
+            New-TestWavFile -FilePath $SubTrackA -DurationMs 400
+            New-TestWavFile -FilePath $SubTrackB -DurationMs 400
+            New-TestWavFile -FilePath $NestedTrack -DurationMs 400
+            New-TestWavFile -FilePath $HiddenTrack -DurationMs 400
+            [File]::WriteAllText($SubNotes, 'ignore me')
+            [File]::WriteAllText($EmptyReadme, 'empty dir')
+
+            # 1. SERVICE ENUMERATION TEST (TOP-LEVEL ONLY, SORTED, NON-MUTATING)
+            [MMDirectoryService]$DirSvc = [MMDirectoryService]::new($RootTemp)
+            [List[MMTrackInfo]]$SubTracks = $DirSvc.GetMediaTracksInDirectory($SubAlbum)
+            Assert-Equal $SubTracks.Count 2 'GetMediaTracksInDirectory must return 2 top-level tracks'
+            Assert-Equal $SubTracks[0].FullPath $SubTrackA 'First sorted track must be a_first.wav'
+            Assert-Equal $SubTracks[1].FullPath $SubTrackB 'Second sorted track must be b_second.wav'
+            Assert-Equal $DirSvc.CurrentPath $RootTemp 'GetMediaTracksInDirectory must not change CurrentPath'
+
+            [List[MMTrackInfo]]$MissingTracks = $DirSvc.GetMediaTracksInDirectory((Join-Path $RootTemp 'DoesNotExist'))
+            Assert-Equal $MissingTracks.Count 0 'Missing directory must return 0 tracks'
+            Assert-True ($DirSvc.LastError.Length -GT 0) 'Missing directory must populate LastError'
+
+            # 2. KEYBOARD INTERACTION IN MAIN PLAYER
+            [BoomboxCore]$Core = [BoomboxCore]::new($RootTemp, '')
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Entered MainPlayer'
+            Assert-Equal $Core.ActiveFocusZone ([BoomboxFocusZone]::DirectoryBrowser) 'DirectoryBrowser is initially focused'
+            Assert-Equal $Core.Playlist.Tracks.Count 1 'CWD auto-populates root_song.wav'
+
+            # INDEX 0: .. (PARENT DIRECTORY) -> NO-OP WITH HELPFUL STATUS
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'a', [ConsoleKey]::A, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.Playlist.Tracks.Count 1 'Pressing A on ParentDirectory must not add tracks'
+            Assert-True ($Core.FooterPanel.StatusLabel.UserData.Contains('Select an audio file or directory')) 'ParentDirectory A status prompt mismatch'
+
+            # INDEX 1: [DIR] EMPTYFOLDER (CONTAINS ONLY TXT + NESTED SUBDIR) -> NO-OP
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'a', [ConsoleKey]::A, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.Playlist.Tracks.Count 1 'Pressing A on EmptyFolder must not recurse or add tracks'
+            Assert-True ($Core.FooterPanel.StatusLabel.UserData.Contains('No supported media files in "EmptyFolder".')) 'EmptyFolder A status mismatch'
+
+            # INDEX 2: [DIR] SUBALBUM -> APPENDS 2 TOP-LEVEL TRACKS WITHOUT NAVIGATING
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'a', [ConsoleKey]::A, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.DirectoryService.CurrentPath $RootTemp 'Pressing A on SubAlbum must not navigate away from RootTemp'
+            Assert-Equal $Core.Playlist.Tracks.Count 3 'Pressing A on SubAlbum must append 2 tracks'
+            Assert-Equal $Core.Playlist.Tracks[1].FullPath $SubTrackA 'Appended track 1 must be a_first.wav'
+            Assert-Equal $Core.Playlist.Tracks[2].FullPath $SubTrackB 'Appended track 2 must be b_second.wav'
+            Assert-Equal $Core.PlaylistPanel.PlaylistList.Items.Count 3 'PlaylistPanel must reflect 3 tracks'
+            Assert-True ($Core.FooterPanel.StatusLabel.UserData.Contains('Added 2 tracks from "SubAlbum"')) 'SubAlbum A status mismatch'
+
+            # INDEX 3: MEDIAFILE ROOT_SONG.WAV -> APPENDS SINGLE TRACK
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'a', [ConsoleKey]::A, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.Playlist.Tracks.Count 4 'Pressing A on MediaFile must append single track'
+            Assert-True ($Core.FooterPanel.StatusLabel.UserData.Contains('Added "root_song.wav" to playlist')) 'Single MediaFile A status mismatch'
+
+            $Core.Cleanup()
+        } Finally {
+            Remove-Item -Path $RootTemp -Recurse -Force -ErrorAction Stop
+        }
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {

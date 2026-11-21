@@ -187,11 +187,7 @@ Class PBStateMainPlayer : SMState {
                         }
 
                         If($KeyInfo.Key -EQ [ConsoleKey]::A) {
-                            If(($KeyInfo.Modifiers -BAND [ConsoleModifiers]::Shift) -EQ [ConsoleModifiers]::Shift) {
-                                $Core.AddAllDirectoryTracksToPlaylist()
-                            } Else {
-                                $Core.AddSelectedDirectoryTrackToPlaylist()
-                            }
+                            $Core.AddSelectedDirectoryTrackToPlaylist()
 
                             Continue
                         }

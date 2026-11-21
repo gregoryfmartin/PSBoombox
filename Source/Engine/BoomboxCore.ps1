@@ -922,8 +922,39 @@ Class BoomboxCore : AppCore {
     [Void]AddSelectedDirectoryTrackToPlaylist() {
         [MMDirectoryEntry]$Entry = $this.DirectoryPanel.GetSelectedEntry()
 
-        If(($null -EQ $Entry) -OR ($Entry.EntryType -NE [DirectoryEntryType]::MediaFile)) {
-            $this.FooterPanel.SetStatus('Select an audio file to add to the playlist.')
+        If($null -EQ $Entry) {
+            $this.FooterPanel.SetStatus('Select an audio file or directory to add to the playlist.')
+
+            Return
+        }
+
+        If($Entry.EntryType -EQ [DirectoryEntryType]::Directory) {
+            [List[MMTrackInfo]]$SubDirTracks = $this.DirectoryService.GetMediaTracksInDirectory($Entry.FullPath)
+
+            If($this.DirectoryService.LastError.Length -GT 0) {
+                $this.FooterPanel.SetError($this.DirectoryService.LastError)
+
+                Return
+            }
+
+            If($SubDirTracks.Count -EQ 0) {
+                $this.FooterPanel.SetStatus("No supported media files in `"$($Entry.Name)`".")
+
+                Return
+            }
+
+            $this.Playlist.AddTracks($SubDirTracks)
+            $this.PlaylistPanel.SyncFromPlaylist($this.Playlist, ($this.Playlist.Tracks.Count - 1))
+
+            [String]$TrackWord = ($SubDirTracks.Count -EQ 1) ? 'track' : 'tracks'
+
+            $this.FooterPanel.SetStatus("Added $($SubDirTracks.Count) $($TrackWord) from `"$($Entry.Name)`"")
+
+            Return
+        }
+
+        If($Entry.EntryType -NE [DirectoryEntryType]::MediaFile) {
+            $this.FooterPanel.SetStatus('Select an audio file or directory to add to the playlist.')
 
             Return
         }
@@ -932,20 +963,6 @@ Class BoomboxCore : AppCore {
         $this.Playlist.AddTrack($Track)
         $this.PlaylistPanel.SyncFromPlaylist($this.Playlist, ($this.Playlist.Tracks.Count - 1))
         $this.FooterPanel.SetStatus("Added `"$($Track.DisplayName)`" to playlist")
-    }
-
-    [Void]AddAllDirectoryTracksToPlaylist() {
-        [List[MMTrackInfo]]$DirTracks = $this.DirectoryService.GetMediaTracksInCurrentDirectory()
-
-        If($DirTracks.Count -EQ 0) {
-            $this.FooterPanel.SetStatus('No supported media files in current directory.')
-
-            Return
-        }
-
-        $this.Playlist.AddTracks($DirTracks)
-        $this.PlaylistPanel.SyncFromPlaylist($this.Playlist, ($this.Playlist.Tracks.Count - 1))
-        $this.FooterPanel.SetStatus("Added $($DirTracks.Count) tracks from directory")
     }
 
     [Void]LoadPlaylistFile(

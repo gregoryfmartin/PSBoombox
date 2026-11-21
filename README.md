@@ -131,7 +131,7 @@ The TUI divides the terminal into four coordinated regions plus centered modal o
 - Press `Enter` on `[DIR]` or `.. (Parent Directory)` (or `Backspace` anywhere in the Directory Browser) to change folders.
 - Press `Enter` on a playlist entry (`≡ Favorites.pls`) to load it into the **Playlist** pane.
 - Press `Enter` on an audio file (`♪ Midnight Drive.mp3`) to add it to the playlist (if not already queued) and start playback immediately.
-- Press `A` to append the highlighted audio file to the playlist without interrupting playback, or `Shift+A` to append every supported audio file in the current directory.
+- Press `A` to append the highlighted audio file—or, when highlighted on a `[DIR]` folder, all top-level supported audio files inside that directory—to the playlist without interrupting playback.
 - Press `Tab` to move focus to the **Playlist** pane to play (`Enter`), reorder (`U`/`Shift+Up`, `J`/`Shift+Down`), remove (`Delete`/`X`), or clear (`C`) tracks.
 
 ---
@@ -235,8 +235,7 @@ Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer M
 | `Home` / `End` | Jump to first / last entry |
 | `Enter` | Open folder, load playlist file, or add & play audio track |
 | `Backspace` | Navigate to parent directory |
-| `A` | Add highlighted audio file to playlist |
-| `Shift+A` | Add all supported audio files in current directory to playlist |
+| `A` | Add highlighted audio file, or all top-level supported audio files in a highlighted `[DIR]` entry, to playlist |
 
 ### Playlist Pane (`Tab` → Right Pane)
 
