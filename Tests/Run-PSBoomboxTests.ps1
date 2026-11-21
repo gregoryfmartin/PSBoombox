@@ -1158,6 +1158,38 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $RootTemp -Recurse -Force -ErrorAction Stop
         }
     }
+
+    & $InvokeCase -Name 'Directory Browser Compact Path Title' -Body {
+        Assert-Equal (Format-CompactDirectoryPath 'C:\Users\Dave\Music\OST\Disc 1') 'C:\..\Disc 1' 'Deep drive path must middle-truncate to root and leaf'
+        Assert-Equal (Format-CompactDirectoryPath 'C:\Users\Dave\Music\OST\Disc 1\') 'C:\..\Disc 1' 'Trailing slash must be ignored cleanly'
+        Assert-Equal (Format-CompactDirectoryPath 'C:\Music\OST') 'C:\..\OST' 'Two-level path must collapse first segment'
+        Assert-Equal (Format-CompactDirectoryPath 'C:\Music') 'C:\Music' 'Single-level directory must keep full path'
+        Assert-Equal (Format-CompactDirectoryPath 'C:\') 'C:\' 'Drive root must remain unchanged'
+        Assert-Equal (Format-CompactDirectoryPath '\\Server\Share\Users\OST\Disc 1') '\\Server\Share\..\Disc 1' 'UNC path must preserve share root and leaf'
+
+        [String]$TempRoot = Join-Path ([Path]::GetTempPath()) "PSBoombox_CompactTitle_$([Guid]::NewGuid().ToString('N'))"
+        [String]$LeafDir  = Join-Path (Join-Path $TempRoot 'OST') 'Disc 1'
+        $null = New-Item -Path $LeafDir -ItemType Directory -Force
+
+        Try {
+            New-TestWavFile -FilePath (Join-Path $LeafDir 'theme.wav') -DurationMs 300
+
+            [String]$DriveRoot       = [Path]::GetPathRoot($LeafDir)
+            [String]$ExpectedTitle   = "Dir: $($DriveRoot)..\Disc 1 (1)"
+            [BoomboxCore]$Core       = [BoomboxCore]::new($LeafDir, '')
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.DirectoryPanel.Title $ExpectedTitle 'DirectoryPanel title must display compact root/leaf format'
+
+            $Core.SetSimulatedViewport(160, 44)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.DirectoryPanel.Title $ExpectedTitle 'DirectoryPanel title must preserve compact root/leaf format after resize'
+
+            $Core.Cleanup()
+        } Finally {
+            Remove-Item -Path $TempRoot -Recurse -Force -ErrorAction Stop
+        }
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {

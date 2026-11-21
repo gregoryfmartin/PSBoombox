@@ -66,13 +66,23 @@ Class UIDirectoryBrowserPanel : UIPanel {
         )
 
         If($this.LastRenderedPath.Length -GT 0) {
-            [Int]$MaxTitlePathLen = [Math]::Max(8, ($this.Width - 22))
-            [String]$ClippedPath  = Format-TruncatedText $this.LastRenderedPath $MaxTitlePathLen
-
-            $this.SetupTitle("Dir: $($ClippedPath) ($($this.LastMediaCount))", $this.TitleColor)
+            $this.UpdateTitleForPath($this.LastRenderedPath, $this.LastMediaCount, $this.TitleColor)
         }
 
         $this.SetAllElementsDirty()
+    }
+
+    [Void]UpdateTitleForPath(
+        [String]$DirectoryPath,
+        [Int]$MediaCount,
+        [TrueColor]$Color
+    ) {
+        [String]$CompactPath  = Format-CompactDirectoryPath $DirectoryPath
+        [Int]$TitleOverhead   = 6 + "Dir:  ($($MediaCount))".Length
+        [Int]$MaxTitlePathLen = [Math]::Max(8, ($this.Width - $TitleOverhead))
+        [String]$ClippedPath  = Format-TruncatedText $CompactPath $MaxTitlePathLen
+
+        $this.SetupTitle("Dir: $($ClippedPath) ($($MediaCount))", $Color)
     }
 
     [MMDirectoryEntry]GetSelectedEntry() {
@@ -93,13 +103,11 @@ Class UIDirectoryBrowserPanel : UIPanel {
             Return
         }
 
-        [Int]$PreviousIndex   = $this.DirectoryList.SelectedIndex
-        [Int]$MediaCount      = $DirService.GetMediaFileCount()
-        $this.LastMediaCount  = $MediaCount
-        [Int]$MaxTitlePathLen = [Math]::Max(8, ($this.Width - 22))
-        [String]$ClippedPath  = Format-TruncatedText $DirService.CurrentPath $MaxTitlePathLen
+        [Int]$PreviousIndex  = $this.DirectoryList.SelectedIndex
+        [Int]$MediaCount     = $DirService.GetMediaFileCount()
+        $this.LastMediaCount = $MediaCount
 
-        $this.SetupTitle("Dir: $($ClippedPath) ($($MediaCount))", [ColorLibrary]::TextActiveColor)
+        $this.UpdateTitleForPath($DirService.CurrentPath, $MediaCount, [ColorLibrary]::TextActiveColor)
         $this.DirectoryList.ClearItems()
 
         Foreach($Entry in $DirService.Entries) {

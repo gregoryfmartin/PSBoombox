@@ -1,4 +1,5 @@
 using namespace System
+using namespace System.IO
 
 Set-StrictMode -Version Latest
 
@@ -84,4 +85,51 @@ Function Format-TruncatedText {
     [Int]$KeepLength = $MaxWidth - 3
 
     Return "$($SafeText.Substring(0, $KeepLength))..."
+}
+
+
+
+
+
+<#
+.SYNOPSIS
+Compacts a directory path by preserving the root/drive letter and leaf folder name.
+#>
+Function Format-CompactDirectoryPath {
+    Param(
+        [String]$DirectoryPath
+    )
+
+    If(($null -EQ $DirectoryPath) -OR ($DirectoryPath.Trim().Length -EQ 0)) {
+        Return ''
+    }
+
+    [String]$Trimmed = $DirectoryPath.Trim()
+    [String]$Root    = ''
+
+    Try {
+        $Root = [Path]::GetPathRoot($Trimmed)
+    } Catch {
+        Return $Trimmed
+    }
+
+    If(($null -EQ $Root) -OR ($Root.Length -EQ 0)) {
+        Return $Trimmed
+    }
+
+    [String]$Remainder      = $Trimmed.Substring($Root.Length)
+    [String]$CleanRoot      = $Root.Replace('/', '\')
+    [String]$NormalizedRoot = ($CleanRoot.EndsWith('\') -EQ $true) ? $CleanRoot : "$($CleanRoot)\"
+    [Char[]]$Separators     = [Char[]]@('\', '/')
+    [String[]]$Segments     = $Remainder.Split($Separators, [StringSplitOptions]::RemoveEmptyEntries)
+
+    If($Segments.Length -EQ 0) {
+        Return $NormalizedRoot
+    }
+
+    If($Segments.Length -EQ 1) {
+        Return "$($NormalizedRoot)$($Segments[0])"
+    }
+
+    Return "$($NormalizedRoot)..\$($Segments[$Segments.Length - 1])"
 }
