@@ -29,7 +29,7 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 | **Terminal Emulator** | VT/ANSI terminal with **24-bit TrueColor**, **Unicode** glyph support, and synchronized rendering (**Windows Terminal** with `Cascadia Mono` or `Consolas` recommended). |
 | **Terminal Size** | Minimum **80 × 24** cells. Layout scales. |
 | **Audio Output** | Speakers. Your mouth isn't acceptable. |
-| **Dependencies** | A computer, fingers to type with, brains. |
+| **Dependencies** | A computer, fingers to type with, brains, ears to listen to the music with (you can borrow your friend's if yours are missing). |
 
 ---
 
