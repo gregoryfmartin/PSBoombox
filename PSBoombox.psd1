@@ -10,7 +10,7 @@
 RootModule = 'PSBoombox.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.1'
+ModuleVersion = '1.5.0'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Core')
@@ -49,7 +49,8 @@ AliasesToExport = @()
 PrivateData = @{
 
     PSData = @{
-        Tags       = @('Media', 'Audio', 'Player', 'TUI', 'ANSI', 'Windows')
+        Tags = @('Media', 'Audio', 'Player', 'TUI', 'ANSI', 'Windows')
+        ProjectUri = 'https://github.com/gregoryfmartin/PSBoombox'
     }
 
 }
