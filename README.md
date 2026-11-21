@@ -1,6 +1,8 @@
 # PSBoombox
 
-A text-based media player for Windows built with PowerShell 7+, featuring a 24-bit TrueColor terminal user interface (TUI), multi-layer finite state machine architecture, playlist file support, and a real-time 10-band ISO graphic equalizer powered by Windows Media Foundation and `winmm.dll`.
+![Banner Image](Docs/Screenshots/PSBoomboxThing.jpg)
+
+PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](https://terminaltrove.com/moc/), [CMUS](https://cmus.github.io/), and Winamp (because we still gotta whip that llama's azz).
 
 ![PSBoombox Main Player](Docs/Screenshots/main-player.png)
 
@@ -8,13 +10,10 @@ A text-based media player for Windows built with PowerShell 7+, featuring a 24-b
 
 ## Features
 
-- **Native Windows Media Engine & Real-Time 10-Band Equalizer**: Streams `.mp3`, `.wav`, `.wma`, `.flac`, `.m4a`, `.aac`, `.mka`, and `.weba` audio in real time through Windows Media Foundation (`mfplat.dll` / `mfreadwrite.dll`), a 10-band peaking biquad equalizer + preamp + soft limiter (`Source/Media/MMEqualizerEngineNative.ps1`), and ring-buffered `winmm.dll` `waveOut*` playback for immediate slider and preset response. MIDI playback (`.mid` / `.midi`) and MCI/mixer/timer interop use pure PowerShell `System.Reflection.Emit` (`DefinePInvokeMethod`) bindings in `MMWinMMNative.ps1`.
-- **10-Band ISO EQ + Presets + Persistence**: Includes a Winamp-style `31 Hz`–`16 kHz` equalizer with `-12 dB` to `+12 dB` (`1 dB` steps), preamp slider, 9 built-in presets (`Flat`, `Bass Boost`, `Rock`, `Pop`, `Jazz`, `Classical`, `Vocal`, `Electronic`, `Treble Boost`), unlimited named custom user presets, automatic `Custom` switching on manual edits, and automatic JSON persistence across sessions in `%APPDATA%\PSBoombox\equalizer.json`.
-- **Full-Buffer Audio Visualizer Mode (`V`)**: Switches to a full-screen 60 FPS post-EQ visualization canvas (powered by compiled C# ANSI cell-diff rendering and `1 ms` `winmm.dll` timer precision) driven by a real-time 1024-point radix-2 FFT and stereo waveform analyzer, with forward-only `Tab` cycling across five visualizers (**Spectrum Analyzer**, **Mirrored Spectrum**, **Braille Oscilloscope**, **Radial Pulse**, and **Spectrogram Waterfall**).
-- **24-Bit TrueColor Synchronized TUI**: Renders rounded box-drawing borders (`╭─╮│╰─╯`), color-coded browser entries, a top-panel EQ active badge (`[EQ:Rock]` / `[EQ:Off]` / `[EQ:MIDI]`), a seekable track progress scrubber, an animated braille activity spinner, and synchronized terminal frame updates (`\e[?2026h` / `\e[?2026l`).
-- **Integrated Directory & Playlist Workflow**: Launch directly into your current working directory, automatically queue any supported media files found there, browse folders, append tracks, reorder playlists, toggle repeat/shuffle, and save or load playlists on the fly.
-- **Resilient MP3 & Path Handling**: Handles large ID3v2 / embedded album-art tags natively via Media Foundation (with automatic pure PowerShell MPEG frame-sync stripping & short-path staging fallback on MCI error `277` / `268`), cleaning up any temporary staged files on stop and exit.
-- **Three-Layer Finite State Machine Design**: Separates application screens (`PBState*`), audio playback lifecycle (`SMPlaybackStateMachine`), and individual UI element focus/activation (`SMUiElementStateMachine`).
+- Plays audio files. Woooooo. Currently supports MP3, WAV, WMA, FLAC, M4A, AAC, MKA, and WEBA.
+- 10-band equalizer with a few baked in presets and the ability to create your own.
+- A fancy little Visualizer Mode. Because what the hell.
+- Directory browsing with an in-memory playlist. Also supports saving and loading common playlist formats: M3U, M3U8, PLS, and WPL.
 
 ---
 
@@ -22,27 +21,28 @@ A text-based media player for Windows built with PowerShell 7+, featuring a 24-b
 
 | Requirement | Specification |
 | --- | --- |
-| **Operating System** | **Windows 10 / Windows 11** (`Win32NT`). Windows-only — validated at startup. |
-| **PowerShell** | **PowerShell Core 7.0+** (`pwsh`, `Core` edition). Windows PowerShell 5.1 is not supported. |
+| **Operating System** | **Windows 10 / Windows 11** - Plans to look at Mac and Linux are forthcoming. |
+| **PowerShell** | **PowerShell Core 7.0+** Windows PowerShell 5.1 is not supported and likely won't be. |
 | **Terminal Emulator** | VT/ANSI terminal with **24-bit TrueColor**, **Unicode** glyph support, and synchronized rendering (**Windows Terminal** with `Cascadia Mono` or `Consolas` recommended). |
 | **Terminal Size** | Minimum **80 × 24** cells. Layout scales dynamically from `80 × 24` up to `160 × 50` cells. |
-| **Audio Output** | Standard Windows audio output device compatible with Windows `waveOut` / MCI (`winmm.dll`). |
-| **Dependencies** | **None.** Zero external executables, NuGet packages, or third-party assemblies. |
+| **Audio Output** | Speakers. Your mouth isn't acceptable. |
+| **Dependencies** | A computer, fingers to type with, brains. |
 
 ---
 
 ## Installation & Module Loading
 
-Clone or download the repository to a local directory, then import the module manifest in PowerShell 7 (`pwsh`):
+PSBoombox is available on the PowerShell Gallery.
 
 ```powershell
-Import-Module .\PSBoombox.psd1 -Force
+Install-Module PSBoombox
 ```
 
-To install `PSBoombox` so it can be imported by name from any directory, copy the repository folder into a directory on your `$env:PSModulePath` (for example, `$HOME\Documents\PowerShell\Modules\PSBoombox`):
+Once installed, you import it, then run the `Start-PSBoombox` cmdlet:
 
 ```powershell
 Import-Module PSBoombox
+Start-PSBoombox
 ```
 
 ---
@@ -55,12 +55,12 @@ Import-Module PSBoombox
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `-Path` | `[String]` | Current Working Directory | Optional starting directory displayed in the Directory Browser pane (relative or rooted paths supported). |
-| `-Playlist` | `[String]` | Empty (`''`) | Optional path to a `.m3u`, `.m3u8`, `.pls`, or `.wpl` playlist file to load on startup. |
+| `-Path` | `[String]` | Current Working Directory | Optional starting directory displayed in the Directory Browser pane (relative or rooted paths supported). If omitted, PSBoombox will use the current directory you started it from. |
+| `-Playlist` | `[String]` | Empty (`''`) | Optional path to a `.m3u`, `.m3u8`, `.pls`, or `.wpl` playlist file to load on startup. If omitted, PSBoombox will use a default, empty, in-memory playlist. |
 
 ### Startup Behavior
 
-- **`Start-PSBoombox`** *(no arguments)*: Opens the Directory Browser in the current working directory (`CWD`), starts with an empty playlist, and automatically appends any supported audio files located in `CWD`.
+- **`Start-PSBoombox`** *(no arguments)*: Opens the Directory Browser in the current working directory, starts with an empty playlist, and automatically appends any supported audio files located in it.
 - **`Start-PSBoombox -Path 'C:\Music'`**: Starts the Directory Browser in `C:\Music` and auto-populates the playlist with any supported audio files found there.
 - **`Start-PSBoombox -Playlist '.\Favorites.m3u8'`**: Loads tracks from the specified playlist file on startup (bypassing CWD auto-population) and focuses the Playlist pane automatically when tracks are loaded.
 
@@ -71,10 +71,10 @@ Import-Module PSBoombox
 Start-PSBoombox
 
 # Start in a specific music folder
-Start-PSBoombox -Path 'D:\Audio\Synthwave'
+Start-PSBoombox -Path 'D:\Audio\GoodShit'
 
 # Start with a saved playlist loaded
-Start-PSBoombox -Playlist '.\Playlists\LateNight.m3u8'
+Start-PSBoombox -Playlist '.\Playlists\PissMyNeighborsOffWithThis.m3u8'
 
 # Browse one folder while pre-loading a playlist from elsewhere
 Start-PSBoombox -Path 'D:\Audio' -Playlist 'D:\Playlists\Favorites.pls'
@@ -86,26 +86,24 @@ Start-PSBoombox -Path 'D:\Audio' -Playlist 'D:\Playlists\Favorites.pls'
 
 ### Audio Formats
 
-| Extension | Format | Playback Engine & EQ Support |
+| Extension | Format | Caveats |
 | --- | --- | --- |
-| `.mp3` | MPEG Audio Layer III | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers *(falls back to MPEG frame-sync staging if needed)* |
-| `.wav` | RIFF WAVE PCM *(8/16/24/32-bit, up to 7.1 ch)* | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
-| `.wma` | Windows Media Audio | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
-| `.flac` | Free Lossless Audio Codec | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
-| `.m4a`, `.aac` | MPEG-4 Audio (AAC / ALAC) & ADTS AAC | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
-| `.mka`, `.weba` | Matroska / WebM Audio | Real-time Windows Media Foundation + `waveOut` streaming with full 10-band EQ & FFT visualizers |
-| `.mid`, `.midi` | Standard MIDI | Played via Windows MCI (`winmm.dll`); EQ and Visualizer Mode are cleanly bypassed (`[EQ:MIDI]`) |
+| `.mp3` | MPEG Audio Layer III |  |
+| `.wav` | RIFF WAVE PCM *(8/16/24/32-bit, up to 7.1 ch)* |  |
+| `.wma` | Windows Media Audio |  |
+| `.flac` | Free Lossless Audio Codec |  |
+| `.m4a`, `.aac` | MPEG-4 Audio (AAC / ALAC) & ADTS AAC |  |
+| `.mka`, `.weba` | Matroska / WebM Audio |  |
+| `.mid`, `.midi` | Standard MIDI | Doesn't support EQ and Visualizer Mode |
 
 ### Playlist Formats
 
 | Extension | Format | Notes |
 | --- | --- | --- |
-| `.m3u` | M3U Playlist | Reads and writes `#EXTM3U` / `#EXTINF` entries |
-| `.m3u8` | UTF-8 M3U Playlist | Default extension when saving without an extension; writes UTF-8 (without BOM) |
-| `.pls` | PLS Playlist | Reads and writes `[playlist]` INI `FileN` / `TitleN` / `LengthN` entries |
-| `.wpl` | Windows Media Player Playlist | Reads and writes SMIL XML `<media src="..." />` entries |
-
-Playlist loading resolves relative track paths against the playlist file's directory, supports `file:///` URIs, ignores network stream URLs, and skips missing files while displaying the skipped count in the status bar.
+| `.m3u` | M3U Playlist |  |
+| `.m3u8` | UTF-8 M3U Playlist |  |
+| `.pls` | PLS Playlist |  |
+| `.wpl` | Windows Media Player Playlist |  |
 
 ---
 
@@ -303,67 +301,3 @@ Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer M
 | `+` / `-` / `M` | Adjust volume ±5% or toggle Mute |
 | `R` / `H` | Cycle Repeat mode / Toggle Shuffle |
 | `Q` | Quit PSBoombox cleanly |
-
----
-
-## Architecture & Project Structure
-
-`PSBoombox` loads its subsystems in strict dependency order inside [`PSBoombox.psm1`](PSBoombox.psm1):
-
-```text
-PSBoombox/
-├── PSBoombox.psd1                 # Module manifest (PowerShell 7.0 Core, exports Start-PSBoombox)
-├── PSBoombox.psm1                 # Ordered module loader
-├── Public/
-│   └── Start-PSBoombox.ps1        # Public entry command (-Path, -Playlist)
-├── Source/
-│   ├── Color/ & String/           # 24-bit TrueColor library & AT* ANSI control sequence builders
-│   ├── Engine/
-│   │   ├── AppCore.ps1            # Frame loop, delta timing, async ConsoleKeyInfo runspace
-│   │   ├── BoomboxCore.ps1        # Coordinates panels, media services, visualizers, focus zones & actions
-│   │   └── States/                # PBStateInit, PBStateMainPlayer, PBStateVisualizer, PBStateEqualizer, PBStateNoticeModal, PBState*Prompt, PBStateShutdown
-│   ├── Enums/ & Events/ & Util/   # Focus zones, repeat/playback enums, Janitor environment checks
-│   ├── Media/
-│   │   ├── MMWinMMNative.ps1      # Pure Reflection.Emit P/Invoke for winmm.dll MCI, timer & kernel32.dll
-│   │   ├── MMEqualizerEngineNative.ps1 # Scoped Add-Type exceptions: 60 Hz Media Foundation/waveOut EQ + FFT & 60 FPS visualizer canvas/renderer
-│   │   ├── MMEqualizerPreset.ps1  # Equalizer preset model & band normalization
-│   │   ├── MMEqualizerService.ps1 # 9 built-in presets, custom user presets & equalizer.json persistence
-│   │   ├── MMMediaPlayer.ps1      # Hybrid Media Foundation (EQ/FFT) + MCI (MIDI) playback controller
-│   │   ├── MMDirectoryService.ps1 # Filesystem browsing & audio/playlist enumeration
-│   │   ├── MMPlaylist.ps1         # Queue operations, RepeatMode & Shuffle logic
-│   │   └── MMPlaylistFileService.ps1 # Reader & writer for .m3u, .m3u8, .pls, and .wpl
-│   ├── StateMachine/              # Generic SMStateMachine, SMUiElementStateMachine, SMPlaybackStateMachine
-│   └── UI/
-│       ├── Elements/*             # Controls including UIVerticalSlider, UITrackProgressBar, UIVolumeControl
-│       ├── Panels/*               # Panels & modals including UIEqualizerModal, UINoticeModal, UIPathInputModal
-│       └── Visualizers/*          # Double-buffered UIVisualizerCanvas & 5 visualizers (Spectrum, Mirror, Oscilloscope, RadialPulse, Waterfall)
-└── Tests/
-    ├── Run-PSBoomboxTests.ps1     # Automated unit, DSP, FFT, persistence, integration & style audit suite
-    └── Test-Helpers.ps1           # Synthetic WAV / MP3 generators and assertions
-```
-
----
-
-## Running Tests
-
-Run the automated test suite from the repository root using PowerShell 7 (`pwsh`):
-
-```powershell
-pwsh -NoProfile -File .\Tests\Run-PSBoomboxTests.ps1
-```
-
-The test harness validates 14 test suites covering:
-1. Module manifest metadata, `Core` edition enforcement, and `Start-PSBoombox` parameter exports.
-2. Coding standard and pure native PowerShell compliance across all files under `Source/` and `Public/` (verifying `Add-Type` is used exclusively inside `Source/Media/MMEqualizerEngineNative.ps1`, `Set-StrictMode -Version Latest`, and `ColorLibrary` rules).
-3. UI, Playback, and Application finite state machine transitions.
-4. Live Windows Media Foundation + `winmm.dll` `waveOut` playback, pause, resume, seek, volume/mute, and natural end-of-track events.
-5. Real-world MP3 playback edge cases including large ID3v2 / album-art padding and deep paths plus temporary staged-file cleanup.
-6. Directory browsing, all startup modes (`CWD`, `-Path`, `-Playlist`), and round-trip `.m3u`, `.m3u8`, `.pls`, and `.wpl` serialization.
-7. Playlist queue mutations, reordering, repeat modes, and shuffle navigation.
-8. Headless engine simulation of focus cycling, directory/save/equalizer modals (`E`, `T`, `UpArrow`, `S`, top `[EQ:...]` badge), and clean shutdown.
-9. 10-band biquad EQ DSP frequency response (`62 Hz` boost, `4 kHz` cut, bypass when disabled, and soft-limiter output bounds).
-10. Equalizer preset management (`9` built-in profiles, custom named user presets, built-in protection, and `equalizer.json` startup persistence).
-11. 1024-point FFT audio analysis (`100 Hz` bass bin vs. `4 kHz` treble bin separation) and post-EQ spectrum reactivity.
-12. Visualizer Mode state machine flow (stopped guard, MIDI notice modal, live `.wav` entry, bottom-left track label, forward-only `Tab` wrap cycling, `E` lockout, global volume/mute, `V` exit, and stop auto-return).
-13. 60 FPS visualizer pacing (`TargetFps` switching, `winmm.dll` 1 ms timer P/Invoke), `AudioAnalyzer` FFT version caching, native cell-diff emission, Unicode glyph rendering, and `< 10 ms/frame` render budget at `160×48`.
-14. Tier 1 WMF audio format routing & discovery (`.flac`, `.m4a`, `.aac`, `.mka`, `.weba`) plus live `.flac` playback/seeking/FFT analysis, 24-bit PCM decoding, and 5.1 ITU-R Center-channel downmixing.
