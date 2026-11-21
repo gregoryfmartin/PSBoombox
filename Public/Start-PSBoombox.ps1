@@ -23,6 +23,9 @@ Optional starting directory path. Defaults to the current working directory.
 .PARAMETER Playlist
 Optional path to a playlist file (.m3u, .m3u8, .pls, or .wpl) to load at startup.
 
+.PARAMETER Theme
+Optional theme name (built-in Gogh preset or 'PSBoombox Default') or path to a custom Gogh-format .json theme file.
+
 .EXAMPLE
 Start-PSBoombox
 
@@ -31,11 +34,15 @@ Start-PSBoombox -Path 'C:\Music'
 
 .EXAMPLE
 Start-PSBoombox -Playlist '.\Favorites.m3u8'
+
+.EXAMPLE
+Start-PSBoombox -Theme 'Catppuccin Latte'
 #>
 Function Start-PSBoombox {
     Param(
         [String]$Path = '',
-        [String]$Playlist = ''
+        [String]$Playlist = '',
+        [String]$Theme = ''
     )
 
     If([Environment]::OSVersion.Platform -NE [PlatformID]::Win32NT) {
@@ -66,6 +73,29 @@ Function Start-PSBoombox {
         $ResolvedPlaylistPath = [Path]::GetFullPath($Candidate)
     }
 
-    [BoomboxCore]$Core = [BoomboxCore]::new($ResolvedStartPath, $ResolvedPlaylistPath)
+    [String]$ResolvedTheme = ''
+
+    If($Theme.Trim().Length -GT 0) {
+        [String]$TrimmedTheme = $Theme.Trim()
+        [String]$PathProbe    = $TrimmedTheme
+
+        Try {
+            If([Path]::IsPathRooted($PathProbe) -EQ $false) {
+                $PathProbe = [Path]::Combine((Get-Location).Path, $PathProbe)
+            }
+
+            $PathProbe = [Path]::GetFullPath($PathProbe)
+        } Catch {
+            $PathProbe = ''
+        }
+
+        If(($PathProbe.Length -GT 0) -AND (([File]::Exists($PathProbe) -EQ $true) -OR ($TrimmedTheme.EndsWith('.json', [StringComparison]::OrdinalIgnoreCase) -EQ $true))) {
+            $ResolvedTheme = $PathProbe
+        } Else {
+            $ResolvedTheme = $TrimmedTheme
+        }
+    }
+
+    [BoomboxCore]$Core = [BoomboxCore]::new($ResolvedStartPath, $ResolvedPlaylistPath, $ResolvedTheme)
     $Core.Run()
 }

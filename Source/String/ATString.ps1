@@ -42,7 +42,7 @@ Class ATString {
         [String]$Composite = "$($this.Prefix.ToAnsiControlSequenceString())$($this.UserData)"
 
         If($this.UseATReset -EQ $true) {
-            $Composite += "$([ATControlSequences]::ModifierReset)"
+            $Composite += "$([ATControlSequences]::GenerateThemeResetString())"
         }
 
         Return "$($Composite)"

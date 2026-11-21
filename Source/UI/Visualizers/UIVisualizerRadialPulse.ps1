@@ -21,7 +21,12 @@ Class UIVisualizerRadialPulse : UIVisualizerBase {
 
     UIVisualizerRadialPulse() : base('Radial Pulse') {
         $this.NativeRenderer = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
-        $this.PackedPalette  = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizRadialGradient)
+
+        $this.RefreshPalette()
+    }
+
+    [Void]RefreshPalette() {
+        $this.PackedPalette = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizRadialGradient)
     }
 
     [Void]Reset() {

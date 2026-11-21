@@ -22,6 +22,7 @@ Class UITabContainer : UIContainer {
     [Boolean]$TabGroupFocused
     [UITabAlignment]$TabAlignment
     [UITabGroup]$TabGroup
+    [ScriptBlock]$OnPageChanged
 
     UITabContainer() : base() {
         $this.Initialize(
@@ -66,6 +67,7 @@ Class UITabContainer : UIContainer {
         $this.ActivePageIndex       = -1
         $this.InteriorDirty         = $true
         $this.TabGroupFocused       = $false
+        $this.OnPageChanged         = $null
         $this.Behavior.CanHaveFocus = $true
 
         $this.UpdateDimensions()
@@ -89,6 +91,18 @@ Class UITabContainer : UIContainer {
         ([UIContainer]$this).SetupTitle($Title, $Color)
 
         $this.UpdateTabGroupCoordinates()
+    }
+
+    [Void]Resize(
+        [ATCoordinates]$LeftTop,
+        [ATCoordinates]$RightBottom
+    ) {
+        $this.SetBounds($LeftTop, $RightBottom)
+        $this.UpdateTabGroupCoordinates()
+
+        $this.InteriorDirty = $true
+
+        $this.SetAllDirty()
     }
 
     [Void]UpdateTabGroupCoordinates() {
@@ -198,6 +212,10 @@ Class UITabContainer : UIContainer {
 
                 $NewPanel.SetAllElementsDirty()
             }
+        }
+
+        If($null -NE $this.OnPageChanged) {
+            $this.OnPageChanged.Invoke($this)
         }
     }
 

@@ -205,7 +205,7 @@ Class UIBase : ATString {
     }
 
     [String]ToAnsiControlSequenceString() {
-        Return "$($this.Prefix.Coordinates.ToAnsiControlSequenceString())$($this.Blank)$(([ATString]$this).ToAnsiControlSequenceString())"
+        Return "$($this.Prefix.Coordinates.ToAnsiControlSequenceString())$([ATControlSequences]::GenerateThemeBgString())$($this.Blank)$(([ATString]$this).ToAnsiControlSequenceString())"
     }
 
     [Void]Draw() {

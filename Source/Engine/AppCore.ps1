@@ -64,7 +64,7 @@ Class AppCore {
 
     [Void]EnterAlternateScreen() {
         If(($this.IsHeadlessMode -EQ $false) -AND ([Console]::IsOutputRedirected -EQ $false) -AND ($this.AltScreenActive -EQ $false)) {
-            Write-Host "$([ATControlSequences]::AltScreenEnter)$([ATControlSequences]::CursorHide)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+            Write-Host "$([ATControlSequences]::AltScreenEnter)$([ATControlSequences]::CursorHide)$([ATControlSequences]::GenerateThemeClearScreenString())" -NoNewline
             $this.AltScreenActive = $true
         }
     }

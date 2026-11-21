@@ -21,7 +21,12 @@ Class UIVisualizerMirror : UIVisualizerBase {
     [Int]$PackedAxisColor
 
     UIVisualizerMirror() : base('Mirrored Spectrum') {
-        $this.NativeRenderer  = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
+        $this.NativeRenderer = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
+
+        $this.RefreshPalette()
+    }
+
+    [Void]RefreshPalette() {
         $this.PackedPalette   = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizMirrorGradient)
         $this.PackedAxisColor = [UIVisualizerCanvas]::PackColor([ColorLibrary]::BoomboxVizAxis)
     }

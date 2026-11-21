@@ -49,4 +49,24 @@ Class ATControlSequences {
     ) {
         Return "`e[$($Row.ToString());$($Column.ToString())H"
     }
+
+    Static [String]GenerateThemeBgString() {
+        If([ColorLibrary]::UseThemeBackground -EQ $true) {
+            Return [ATControlSequences]::GenerateBG24String([ColorLibrary]::ThemeBackground)
+        }
+
+        Return ''
+    }
+
+    Static [String]GenerateThemeResetString() {
+        If([ColorLibrary]::UseThemeBackground -EQ $true) {
+            Return "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::GenerateBG24String([ColorLibrary]::ThemeBackground))"
+        }
+
+        Return [ATControlSequences]::ModifierReset
+    }
+
+    Static [String]GenerateThemeClearScreenString() {
+        Return "$([ATControlSequences]::GenerateThemeResetString())$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)"
+    }
 }

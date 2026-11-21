@@ -139,7 +139,7 @@ Class PBStateBufferTooSmall : SMState {
                 Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
 
                 If([Console]::IsOutputRedirected -EQ $false) {
-                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                    Write-Host "$([ATControlSequences]::GenerateThemeClearScreenString())" -NoNewline
                 }
 
                 If($WarningAnsi.Length -GT 0) {

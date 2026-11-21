@@ -21,7 +21,12 @@ Class UIVisualizerOscilloscope : UIVisualizerBase {
     [Int]$PackedAxisColor
 
     UIVisualizerOscilloscope() : base('Braille Oscilloscope') {
-        $this.NativeRenderer  = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
+        $this.NativeRenderer = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
+
+        $this.RefreshPalette()
+    }
+
+    [Void]RefreshPalette() {
         $this.PackedPalette   = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizScopeGradient)
         $this.PackedAxisColor = [UIVisualizerCanvas]::PackColor([ColorLibrary]::BoomboxVizAxis)
     }

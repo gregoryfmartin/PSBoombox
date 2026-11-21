@@ -29,6 +29,8 @@ Class UIVisualizerBase {
 
     [Void]Reset() {}
 
+    [Void]RefreshPalette() {}
+
     [Void]RenderFrame(
         [UIVisualizerCanvas]$Canvas,
         [Single[]]$Spectrum,
@@ -42,7 +44,7 @@ Class UIVisualizerBase {
         [Double]$NormalizedValue
     ) {
         If(($null -EQ $Palette) -OR ($Palette.Length -EQ 0)) {
-            Return [ColorLibrary]::White
+            Return [ColorLibrary]::TextActiveColor
         }
 
         [Double]$Clamped = [Math]::Clamp($NormalizedValue, 0.0, 1.0)

@@ -74,11 +74,25 @@ Class UIVisualizerCanvas {
             $this.NativeCanvas.Initialize($Width, $Height, $TopRow, $LeftCol)
         }
 
+        If([ColorLibrary]::UseThemeBackground -EQ $true) {
+            $this.NativeCanvas.SetDefaultBackground([UIVisualizerCanvas]::PackColor([ColorLibrary]::ThemeBackground))
+        } Else {
+            $this.NativeCanvas.SetDefaultBackground(-1)
+        }
+
         $this.Width     = $this.NativeCanvas.Width
         $this.Height    = $this.NativeCanvas.Height
         $this.TopRow    = $this.NativeCanvas.TopRow
         $this.LeftCol   = $this.NativeCanvas.LeftCol
         $this.CellCount = $this.NativeCanvas.CellCount
+    }
+
+    [Void]SetBackgroundColor(
+        [TrueColor]$BgColor
+    ) {
+        [Int]$Packed = ($null -NE $BgColor) ? [UIVisualizerCanvas]::PackColor($BgColor) : -1
+
+        $this.NativeCanvas.SetDefaultBackground($Packed)
     }
 
     [Void]ClearFrame() {

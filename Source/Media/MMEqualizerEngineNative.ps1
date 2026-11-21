@@ -1741,6 +1741,7 @@ namespace PSBoombox {
         public int LeftCol { get; private set; }
         public int CellCount { get; private set; }
         public bool ForceFullRedraw;
+        public int DefaultBgRgb = -1;
 
         internal char[] CurrChar;
         internal int[] CurrFg;
@@ -1756,6 +1757,13 @@ namespace PSBoombox {
 
         public NativeVisualizerCanvas(int width, int height, int topRow, int leftCol) {
             Initialize(width, height, topRow, leftCol);
+        }
+
+        public void SetDefaultBackground(int bgRgb) {
+            if (DefaultBgRgb != bgRgb) {
+                DefaultBgRgb = bgRgb;
+                ForceFullRedraw = true;
+            }
         }
 
         public void Initialize(int width, int height, int topRow, int leftCol) {
@@ -1836,6 +1844,7 @@ namespace PSBoombox {
             bool hasModifier = false;
             bool emittedAnything = false;
             bool force = ForceFullRedraw;
+            int defaultBg = DefaultBgRgb;
             int w = Width;
             int h = Height;
 
@@ -1848,7 +1857,8 @@ namespace PSBoombox {
                     int idx = rowBase + c;
                     char ch = CurrChar[idx];
                     int fg = CurrFg[idx];
-                    int bg = CurrBg[idx];
+                    int rawBg = CurrBg[idx];
+                    int bg = (rawBg != -1) ? rawBg : defaultBg;
 
                     if (!force && ch == _prevChar[idx] && fg == _prevFg[idx] && bg == _prevBg[idx]) {
                         continue;
@@ -1860,7 +1870,10 @@ namespace PSBoombox {
                         _sb.Append("\u001b[").Append(absRow).Append(';').Append(LeftCol + c).Append('H');
                     }
 
-                    if (hasModifier && ((bg == -1 && activeBg != -1) || (fg == -1 && activeFg != -1))) {
+                    bool needFgReset = (fg == -1 && activeFg != -1 && ch != ' ');
+                    bool needBgReset = (bg == -1 && activeBg != -1);
+
+                    if (hasModifier && (needBgReset || needFgReset)) {
                         _sb.Append("\u001b[0m");
                         activeFg = -1;
                         activeBg = -1;

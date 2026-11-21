@@ -48,6 +48,138 @@ Class TrueColor {
         $this.Green = [ColorChannel]::new(($Hex -SHR 8) -BAND 0xFF)
         $this.Blue  = [ColorChannel]::new($Hex -BAND 0xFF)
     }
+
+    TrueColor(
+        [TrueColor]$Source
+    ) {
+        If($null -EQ $Source) {
+            $this.Red   = [ColorChannel]::new()
+            $this.Green = [ColorChannel]::new()
+            $this.Blue  = [ColorChannel]::new()
+        } Else {
+            $this.Red   = [ColorChannel]::new($Source.Red.Value)
+            $this.Green = [ColorChannel]::new($Source.Green.Value)
+            $this.Blue  = [ColorChannel]::new($Source.Blue.Value)
+        }
+    }
+
+    [Void]CopyFrom(
+        [TrueColor]$Source
+    ) {
+        If($null -EQ $Source) {
+            Return
+        }
+
+        $this.Red.SetValue($Source.Red.Value)
+        $this.Green.SetValue($Source.Green.Value)
+        $this.Blue.SetValue($Source.Blue.Value)
+    }
+
+    [String]ToHexString() {
+        Return "#$($this.Red.Value.ToString('X2'))$($this.Green.Value.ToString('X2'))$($this.Blue.Value.ToString('X2'))"
+    }
+
+    Static [TrueColor]FromHex(
+        [String]$HexString
+    ) {
+        If($null -EQ $HexString) {
+            Throw [ArgumentException]::new('Hex color string cannot be null.')
+        }
+
+        [String]$Cleaned = $HexString.Trim()
+
+        If($Cleaned.StartsWith('#') -EQ $true) {
+            $Cleaned = $Cleaned.Substring(1)
+        } Elseif($Cleaned.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase) -EQ $true) {
+            $Cleaned = $Cleaned.Substring(2)
+        }
+
+        If(($Cleaned -MATCH '^[0-9A-Fa-f]{6}$') -EQ $false) {
+            Throw [ArgumentException]::new("Invalid 24-bit hex color '$($HexString)'.")
+        }
+
+        Return [TrueColor]::new([Convert]::ToInt32($Cleaned, 16))
+    }
+
+    Static [TrueColor]Blend(
+        [TrueColor]$FromColor,
+        [TrueColor]$ToColor,
+        [Double]$Factor
+    ) {
+        If(($null -EQ $FromColor) -OR ($null -EQ $ToColor)) {
+            Return [TrueColor]::new()
+        }
+
+        [Double]$T = [Math]::Clamp($Factor, 0.0, 1.0)
+        [Int]$R    = [Int][Math]::Round($FromColor.Red.Value + (($ToColor.Red.Value - $FromColor.Red.Value) * $T))
+        [Int]$G    = [Int][Math]::Round($FromColor.Green.Value + (($ToColor.Green.Value - $FromColor.Green.Value) * $T))
+        [Int]$B    = [Int][Math]::Round($FromColor.Blue.Value + (($ToColor.Blue.Value - $FromColor.Blue.Value) * $T))
+
+        Return [TrueColor]::new(
+            [ColorChannel]::new($R),
+            [ColorChannel]::new($G),
+            [ColorChannel]::new($B)
+        )
+    }
+
+    Static [Double]GetRelativeLuminance(
+        [TrueColor]$Color
+    ) {
+        If($null -EQ $Color) {
+            Return 0.0
+        }
+
+        [Double]$SR   = [Double]$Color.Red.Value / 255.0
+        [Double]$SG   = [Double]$Color.Green.Value / 255.0
+        [Double]$SB   = [Double]$Color.Blue.Value / 255.0
+        [Double]$LinR = ($SR -LE 0.03928) ? ($SR / 12.92) : [Math]::Pow((($SR + 0.055) / 1.055), 2.4)
+        [Double]$LinG = ($SG -LE 0.03928) ? ($SG / 12.92) : [Math]::Pow((($SG + 0.055) / 1.055), 2.4)
+        [Double]$LinB = ($SB -LE 0.03928) ? ($SB / 12.92) : [Math]::Pow((($SB + 0.055) / 1.055), 2.4)
+
+        Return (0.2126 * $LinR) + (0.7152 * $LinG) + (0.0722 * $LinB)
+    }
+
+    Static [Double]GetContrastRatio(
+        [TrueColor]$ColorA,
+        [TrueColor]$ColorB
+    ) {
+        [Double]$LumA = [TrueColor]::GetRelativeLuminance($ColorA)
+        [Double]$LumB = [TrueColor]::GetRelativeLuminance($ColorB)
+        [Double]$MaxL = [Math]::Max($LumA, $LumB)
+        [Double]$MinL = [Math]::Min($LumA, $LumB)
+
+        Return (($MaxL + 0.05) / ($MinL + 0.05))
+    }
+
+    Static [TrueColor]EnsureContrast(
+        [TrueColor]$Foreground,
+        [TrueColor]$Background,
+        [TrueColor]$Anchor,
+        [Double]$MinRatio
+    ) {
+        If($null -EQ $Foreground) {
+            Return [TrueColor]::new($Anchor)
+        }
+
+        If(($null -EQ $Background) -OR ($null -EQ $Anchor)) {
+            Return [TrueColor]::new($Foreground)
+        }
+
+        If([TrueColor]::GetContrastRatio($Foreground, $Background) -GE $MinRatio) {
+            Return [TrueColor]::new($Foreground)
+        }
+
+        For([Int]$Step = 1; $Step -LE 10; $Step++) {
+            [Double]$Factor       = [Double]$Step * 0.1
+            [TrueColor]$Candidate = [TrueColor]::Blend($Foreground, $Anchor, $Factor)
+
+            If([TrueColor]::GetContrastRatio($Candidate, $Background) -GE $MinRatio) {
+                Return $Candidate
+            }
+        }
+
+        Return [TrueColor]::new($Anchor)
+    }
 }
 
 Class ColorLibrary {
@@ -213,137 +345,269 @@ Class ColorLibrary {
     Static [TrueColor]$AppleBrownLight              = [TrueColor]::new(0xAC7F5E)
     Static [TrueColor]$AppleBrownDark               = [TrueColor]::new(0xB78A66)
     Static [TrueColor]$MistyRose                    = [TrueColor]::new(0xFFE4E1)
-    Static [TrueColor]$WindowBorderActiveColor      = [ColorLibrary]::Ivory
-    Static [TrueColor]$WindowBorderInactiveColor    = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$TextActiveColor              = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$TextInactiveColor            = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$TextColor                    = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UICheckboxHasFocus           = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UICheckboxChecked            = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$UICheckboxInactiveColor      = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UICheckboxActive             = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UIChevronActive              = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UIChevronInactive            = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UIChevronHasFocus            = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UILabelActive                = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UILabelInactive              = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UITextInputActive            = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UITextInputInactive          = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UITextInputHasFocus          = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UITextInputPlaceholder       = [ColorLibrary]::SlateGrey
-    Static [TrueColor]$UITextInputCursor            = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$UIButtonActive               = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UIButtonInactive             = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UIButtonHasFocus             = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UIButtonBracketActive        = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$UIButtonBracketHasFocus      = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$UIRadioButtonActive          = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UIRadioButtonInactive        = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UIRadioButtonHasFocus        = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UIRadioButtonSelected        = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$UIListItemActive             = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UIListItemInactive           = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UIListItemSelected           = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$UIListItemHasFocus           = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UINumberSpinnerActive        = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UINumberSpinnerInactive      = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UINumberSpinnerHasFocus      = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UINumberSpinnerValueModified = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$UIProgressBarFilled          = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$UIProgressBarEmpty           = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UIProgressBarInactive        = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UIProgressBarBorder          = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UIProgressBarText            = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UITabActive                  = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$UITabInactive                = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$UITabSelected                = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$UITabHasFocus                = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$UITabBorderActive            = [ColorLibrary]::Ivory
-    Static [TrueColor]$UITabBorderSelected          = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$UITabBorderHasFocus          = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxBorderFocused         = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$BoomboxStatusPlaying         = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$BoomboxStatusPaused          = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxStatusStopped         = [ColorLibrary]::SlateGrey
-    Static [TrueColor]$BoomboxStatusError           = [ColorLibrary]::AppleRedLight
-    Static [TrueColor]$BoomboxDirEntry              = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$BoomboxParentDirEntry        = [ColorLibrary]::AppleOrangeLight
-    Static [TrueColor]$BoomboxPlaylistFileEntry     = [ColorLibrary]::ApplePurpleLight
-    Static [TrueColor]$BoomboxMediaFileEntry        = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$BoomboxNowPlayingEntry       = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$BoomboxVolumeSafe            = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$BoomboxVolumeHigh            = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxVolumeMuted           = [ColorLibrary]::AppleRedLight
-    Static [TrueColor]$BoomboxScrubberFilled        = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$BoomboxModalBorder           = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxFooterHint            = [ColorLibrary]::LightSlateGrey
-    Static [TrueColor]$BoomboxFooterStatus          = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$BoomboxFooterError           = [ColorLibrary]::AppleRedLight
-    Static [TrueColor]$BoomboxSpinnerActive         = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$BoomboxEqActive              = [ColorLibrary]::AppleMintLight
-    Static [TrueColor]$BoomboxEqInactive            = [ColorLibrary]::SlateGrey
-    Static [TrueColor]$BoomboxEqBypassed            = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxEqSliderPos           = [ColorLibrary]::AppleCyanLight
-    Static [TrueColor]$BoomboxEqSliderNeg           = [ColorLibrary]::AppleOrangeLight
-    Static [TrueColor]$BoomboxEqSliderZero          = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$BoomboxEqSliderTrack         = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$BoomboxEqSliderFocused       = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxVizTrackLabel           = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$BoomboxVizHint                 = [ColorLibrary]::LightSlateGrey
-    Static [TrueColor]$BoomboxVizPeakCap              = [ColorLibrary]::White
-    Static [TrueColor]$BoomboxVizAxis                 = [ColorLibrary]::DarkSlateGrey
-    Static [TrueColor]$BoomboxWarningBorder           = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxWarningTitle            = [ColorLibrary]::AppleYellowLight
-    Static [TrueColor]$BoomboxWarningText             = [ColorLibrary]::GhostWhite
-    Static [TrueColor]$BoomboxWarningDimOk            = [ColorLibrary]::AppleGreenLight
-    Static [TrueColor]$BoomboxWarningDimBad           = [ColorLibrary]::AppleRedLight
+    Static [TrueColor]$ThemeBackground              = [TrueColor]::new(0x0C0C0C)
+    Static [Boolean]$UseThemeBackground            = $true
+    Static [TrueColor]$WindowBorderActiveColor      = [TrueColor]::new([ColorLibrary]::Ivory)
+    Static [TrueColor]$WindowBorderInactiveColor    = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$TextActiveColor              = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$TextInactiveColor            = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$TextColor                    = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UICheckboxHasFocus           = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UICheckboxChecked            = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$UICheckboxInactiveColor      = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UICheckboxActive             = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UIChevronActive              = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UIChevronInactive            = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UIChevronHasFocus            = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UILabelActive                = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UILabelInactive              = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UITextInputActive            = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UITextInputInactive          = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UITextInputHasFocus          = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UITextInputPlaceholder       = [TrueColor]::new([ColorLibrary]::SlateGrey)
+    Static [TrueColor]$UITextInputCursor            = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$UIButtonActive               = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UIButtonInactive             = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UIButtonHasFocus             = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UIButtonBracketActive        = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$UIButtonBracketHasFocus      = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$UIRadioButtonActive          = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UIRadioButtonInactive        = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UIRadioButtonHasFocus        = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UIRadioButtonSelected        = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$UIListItemActive             = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UIListItemInactive           = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UIListItemSelected           = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$UIListItemHasFocus           = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UINumberSpinnerActive        = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UINumberSpinnerInactive      = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UINumberSpinnerHasFocus      = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UINumberSpinnerValueModified = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$UIProgressBarFilled          = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$UIProgressBarEmpty           = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UIProgressBarInactive        = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UIProgressBarBorder          = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UIProgressBarText            = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UITabActive                  = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$UITabInactive                = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$UITabSelected                = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$UITabHasFocus                = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$UITabBorderActive            = [TrueColor]::new([ColorLibrary]::Ivory)
+    Static [TrueColor]$UITabBorderSelected          = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$UITabBorderHasFocus          = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxBorderFocused         = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$BoomboxStatusPlaying         = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$BoomboxStatusPaused          = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxStatusStopped         = [TrueColor]::new([ColorLibrary]::SlateGrey)
+    Static [TrueColor]$BoomboxStatusError           = [TrueColor]::new([ColorLibrary]::AppleRedLight)
+    Static [TrueColor]$BoomboxDirEntry              = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$BoomboxParentDirEntry        = [TrueColor]::new([ColorLibrary]::AppleOrangeLight)
+    Static [TrueColor]$BoomboxPlaylistFileEntry     = [TrueColor]::new([ColorLibrary]::ApplePurpleLight)
+    Static [TrueColor]$BoomboxMediaFileEntry        = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$BoomboxNowPlayingEntry       = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$BoomboxVolumeSafe            = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$BoomboxVolumeHigh            = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxVolumeMuted           = [TrueColor]::new([ColorLibrary]::AppleRedLight)
+    Static [TrueColor]$BoomboxScrubberFilled        = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$BoomboxModalBorder           = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxFooterHint            = [TrueColor]::new([ColorLibrary]::LightSlateGrey)
+    Static [TrueColor]$BoomboxFooterStatus          = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$BoomboxFooterError           = [TrueColor]::new([ColorLibrary]::AppleRedLight)
+    Static [TrueColor]$BoomboxSpinnerActive         = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$BoomboxEqActive              = [TrueColor]::new([ColorLibrary]::AppleMintLight)
+    Static [TrueColor]$BoomboxEqInactive            = [TrueColor]::new([ColorLibrary]::SlateGrey)
+    Static [TrueColor]$BoomboxEqBypassed            = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxEqSliderPos           = [TrueColor]::new([ColorLibrary]::AppleCyanLight)
+    Static [TrueColor]$BoomboxEqSliderNeg           = [TrueColor]::new([ColorLibrary]::AppleOrangeLight)
+    Static [TrueColor]$BoomboxEqSliderZero          = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$BoomboxEqSliderTrack         = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$BoomboxEqSliderFocused       = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxVizTrackLabel           = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$BoomboxVizHint                 = [TrueColor]::new([ColorLibrary]::LightSlateGrey)
+    Static [TrueColor]$BoomboxVizPeakCap              = [TrueColor]::new([ColorLibrary]::White)
+    Static [TrueColor]$BoomboxVizAxis                 = [TrueColor]::new([ColorLibrary]::DarkSlateGrey)
+    Static [TrueColor]$BoomboxWarningBorder           = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxWarningTitle            = [TrueColor]::new([ColorLibrary]::AppleYellowLight)
+    Static [TrueColor]$BoomboxWarningText             = [TrueColor]::new([ColorLibrary]::GhostWhite)
+    Static [TrueColor]$BoomboxWarningDimOk            = [TrueColor]::new([ColorLibrary]::AppleGreenLight)
+    Static [TrueColor]$BoomboxWarningDimBad           = [TrueColor]::new([ColorLibrary]::AppleRedLight)
     Static [TrueColor[]]$BoomboxVizSpectrumGradient  = @(
-        [ColorLibrary]::DeepSkyBlue,
-        [ColorLibrary]::AppleCyanLight,
-        [ColorLibrary]::AppleMintLight,
-        [ColorLibrary]::AppleGreenLight,
-        [ColorLibrary]::YellowGreen,
-        [ColorLibrary]::AppleYellowLight,
-        [ColorLibrary]::AppleOrangeLight,
-        [ColorLibrary]::AppleRedLight
+        [TrueColor]::new([ColorLibrary]::DeepSkyBlue),
+        [TrueColor]::new([ColorLibrary]::AppleCyanLight),
+        [TrueColor]::new([ColorLibrary]::AppleMintLight),
+        [TrueColor]::new([ColorLibrary]::AppleGreenLight),
+        [TrueColor]::new([ColorLibrary]::YellowGreen),
+        [TrueColor]::new([ColorLibrary]::AppleYellowLight),
+        [TrueColor]::new([ColorLibrary]::AppleOrangeLight),
+        [TrueColor]::new([ColorLibrary]::AppleRedLight)
     )
     Static [TrueColor[]]$BoomboxVizMirrorGradient    = @(
-        [ColorLibrary]::AppleBlueLight,
-        [ColorLibrary]::AppleCyanLight,
-        [ColorLibrary]::AppleMintLight,
-        [ColorLibrary]::AppleIndigoLight,
-        [ColorLibrary]::ApplePurpleLight,
-        [ColorLibrary]::MediumOrchid,
-        [ColorLibrary]::ApplePinkLight,
-        [ColorLibrary]::HotPink
+        [TrueColor]::new([ColorLibrary]::AppleBlueLight),
+        [TrueColor]::new([ColorLibrary]::AppleCyanLight),
+        [TrueColor]::new([ColorLibrary]::AppleMintLight),
+        [TrueColor]::new([ColorLibrary]::AppleIndigoLight),
+        [TrueColor]::new([ColorLibrary]::ApplePurpleLight),
+        [TrueColor]::new([ColorLibrary]::MediumOrchid),
+        [TrueColor]::new([ColorLibrary]::ApplePinkLight),
+        [TrueColor]::new([ColorLibrary]::HotPink)
     )
     Static [TrueColor[]]$BoomboxVizScopeGradient     = @(
-        [ColorLibrary]::AppleCyanLight,
-        [ColorLibrary]::AppleMintLight,
-        [ColorLibrary]::AppleGreenLight,
-        [ColorLibrary]::AppleYellowLight
+        [TrueColor]::new([ColorLibrary]::AppleCyanLight),
+        [TrueColor]::new([ColorLibrary]::AppleMintLight),
+        [TrueColor]::new([ColorLibrary]::AppleGreenLight),
+        [TrueColor]::new([ColorLibrary]::AppleYellowLight)
     )
     Static [TrueColor[]]$BoomboxVizRadialGradient    = @(
-        [ColorLibrary]::AppleIndigoDark,
-        [ColorLibrary]::AppleBlueLight,
-        [ColorLibrary]::AppleCyanLight,
-        [ColorLibrary]::AppleMintLight,
-        [ColorLibrary]::AppleYellowLight,
-        [ColorLibrary]::AppleOrangeLight,
-        [ColorLibrary]::ApplePinkLight,
-        [ColorLibrary]::White
+        [TrueColor]::new([ColorLibrary]::AppleIndigoDark),
+        [TrueColor]::new([ColorLibrary]::AppleBlueLight),
+        [TrueColor]::new([ColorLibrary]::AppleCyanLight),
+        [TrueColor]::new([ColorLibrary]::AppleMintLight),
+        [TrueColor]::new([ColorLibrary]::AppleYellowLight),
+        [TrueColor]::new([ColorLibrary]::AppleOrangeLight),
+        [TrueColor]::new([ColorLibrary]::ApplePinkLight),
+        [TrueColor]::new([ColorLibrary]::White)
     )
     Static [TrueColor[]]$BoomboxVizWaterfallGradient = @(
-        [ColorLibrary]::Black,
-        [ColorLibrary]::MidnightBlue,
-        [ColorLibrary]::DarkSlateBlue,
-        [ColorLibrary]::AppleBlueLight,
-        [ColorLibrary]::AppleCyanLight,
-        [ColorLibrary]::AppleMintLight,
-        [ColorLibrary]::AppleYellowLight,
-        [ColorLibrary]::AppleOrangeLight,
-        [ColorLibrary]::AppleRedLight
+        [TrueColor]::new([ColorLibrary]::Black),
+        [TrueColor]::new([ColorLibrary]::MidnightBlue),
+        [TrueColor]::new([ColorLibrary]::DarkSlateBlue),
+        [TrueColor]::new([ColorLibrary]::AppleBlueLight),
+        [TrueColor]::new([ColorLibrary]::AppleCyanLight),
+        [TrueColor]::new([ColorLibrary]::AppleMintLight),
+        [TrueColor]::new([ColorLibrary]::AppleYellowLight),
+        [TrueColor]::new([ColorLibrary]::AppleOrangeLight),
+        [TrueColor]::new([ColorLibrary]::AppleRedLight)
     )
+
+    Static [Void]ResetSemanticDefaults() {
+        [ColorLibrary]::ThemeBackground.CopyFrom([TrueColor]::new(0x0C0C0C))
+        [ColorLibrary]::WindowBorderActiveColor.CopyFrom([ColorLibrary]::Ivory)
+        [ColorLibrary]::WindowBorderInactiveColor.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::TextActiveColor.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::TextInactiveColor.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::TextColor.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UICheckboxHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UICheckboxChecked.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::UICheckboxInactiveColor.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UICheckboxActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UIChevronActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UIChevronInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UIChevronHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UILabelActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UILabelInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UITextInputActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UITextInputInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UITextInputHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UITextInputPlaceholder.CopyFrom([ColorLibrary]::SlateGrey)
+        [ColorLibrary]::UITextInputCursor.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::UIButtonActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UIButtonInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UIButtonHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UIButtonBracketActive.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::UIButtonBracketHasFocus.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::UIRadioButtonActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UIRadioButtonInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UIRadioButtonHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UIRadioButtonSelected.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::UIListItemActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UIListItemInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UIListItemSelected.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::UIListItemHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UINumberSpinnerActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UINumberSpinnerInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UINumberSpinnerHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UINumberSpinnerValueModified.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::UIProgressBarFilled.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::UIProgressBarEmpty.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UIProgressBarInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UIProgressBarBorder.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UIProgressBarText.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UITabActive.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::UITabInactive.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::UITabSelected.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::UITabHasFocus.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::UITabBorderActive.CopyFrom([ColorLibrary]::Ivory)
+        [ColorLibrary]::UITabBorderSelected.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::UITabBorderHasFocus.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxBorderFocused.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxStatusPlaying.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxStatusPaused.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxStatusStopped.CopyFrom([ColorLibrary]::SlateGrey)
+        [ColorLibrary]::BoomboxStatusError.CopyFrom([ColorLibrary]::AppleRedLight)
+        [ColorLibrary]::BoomboxDirEntry.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxParentDirEntry.CopyFrom([ColorLibrary]::AppleOrangeLight)
+        [ColorLibrary]::BoomboxPlaylistFileEntry.CopyFrom([ColorLibrary]::ApplePurpleLight)
+        [ColorLibrary]::BoomboxMediaFileEntry.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::BoomboxNowPlayingEntry.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxVolumeSafe.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxVolumeHigh.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxVolumeMuted.CopyFrom([ColorLibrary]::AppleRedLight)
+        [ColorLibrary]::BoomboxScrubberFilled.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxModalBorder.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxFooterHint.CopyFrom([ColorLibrary]::LightSlateGrey)
+        [ColorLibrary]::BoomboxFooterStatus.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxFooterError.CopyFrom([ColorLibrary]::AppleRedLight)
+        [ColorLibrary]::BoomboxSpinnerActive.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxEqActive.CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::BoomboxEqInactive.CopyFrom([ColorLibrary]::SlateGrey)
+        [ColorLibrary]::BoomboxEqBypassed.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxEqSliderPos.CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxEqSliderNeg.CopyFrom([ColorLibrary]::AppleOrangeLight)
+        [ColorLibrary]::BoomboxEqSliderZero.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::BoomboxEqSliderTrack.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::BoomboxEqSliderFocused.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxVizTrackLabel.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::BoomboxVizHint.CopyFrom([ColorLibrary]::LightSlateGrey)
+        [ColorLibrary]::BoomboxVizPeakCap.CopyFrom([ColorLibrary]::White)
+        [ColorLibrary]::BoomboxVizAxis.CopyFrom([ColorLibrary]::DarkSlateGrey)
+        [ColorLibrary]::BoomboxWarningBorder.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxWarningTitle.CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxWarningText.CopyFrom([ColorLibrary]::GhostWhite)
+        [ColorLibrary]::BoomboxWarningDimOk.CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxWarningDimBad.CopyFrom([ColorLibrary]::AppleRedLight)
+
+        [ColorLibrary]::BoomboxVizSpectrumGradient[0].CopyFrom([ColorLibrary]::DeepSkyBlue)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[1].CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[2].CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[3].CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[4].CopyFrom([ColorLibrary]::YellowGreen)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[5].CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[6].CopyFrom([ColorLibrary]::AppleOrangeLight)
+        [ColorLibrary]::BoomboxVizSpectrumGradient[7].CopyFrom([ColorLibrary]::AppleRedLight)
+
+        [ColorLibrary]::BoomboxVizMirrorGradient[0].CopyFrom([ColorLibrary]::AppleBlueLight)
+        [ColorLibrary]::BoomboxVizMirrorGradient[1].CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxVizMirrorGradient[2].CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::BoomboxVizMirrorGradient[3].CopyFrom([ColorLibrary]::AppleIndigoLight)
+        [ColorLibrary]::BoomboxVizMirrorGradient[4].CopyFrom([ColorLibrary]::ApplePurpleLight)
+        [ColorLibrary]::BoomboxVizMirrorGradient[5].CopyFrom([ColorLibrary]::MediumOrchid)
+        [ColorLibrary]::BoomboxVizMirrorGradient[6].CopyFrom([ColorLibrary]::ApplePinkLight)
+        [ColorLibrary]::BoomboxVizMirrorGradient[7].CopyFrom([ColorLibrary]::HotPink)
+
+        [ColorLibrary]::BoomboxVizScopeGradient[0].CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxVizScopeGradient[1].CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::BoomboxVizScopeGradient[2].CopyFrom([ColorLibrary]::AppleGreenLight)
+        [ColorLibrary]::BoomboxVizScopeGradient[3].CopyFrom([ColorLibrary]::AppleYellowLight)
+
+        [ColorLibrary]::BoomboxVizRadialGradient[0].CopyFrom([ColorLibrary]::AppleIndigoDark)
+        [ColorLibrary]::BoomboxVizRadialGradient[1].CopyFrom([ColorLibrary]::AppleBlueLight)
+        [ColorLibrary]::BoomboxVizRadialGradient[2].CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxVizRadialGradient[3].CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::BoomboxVizRadialGradient[4].CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxVizRadialGradient[5].CopyFrom([ColorLibrary]::AppleOrangeLight)
+        [ColorLibrary]::BoomboxVizRadialGradient[6].CopyFrom([ColorLibrary]::ApplePinkLight)
+        [ColorLibrary]::BoomboxVizRadialGradient[7].CopyFrom([ColorLibrary]::White)
+
+        [ColorLibrary]::BoomboxVizWaterfallGradient[0].CopyFrom([ColorLibrary]::Black)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[1].CopyFrom([ColorLibrary]::MidnightBlue)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[2].CopyFrom([ColorLibrary]::DarkSlateBlue)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[3].CopyFrom([ColorLibrary]::AppleBlueLight)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[4].CopyFrom([ColorLibrary]::AppleCyanLight)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[5].CopyFrom([ColorLibrary]::AppleMintLight)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[6].CopyFrom([ColorLibrary]::AppleYellowLight)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[7].CopyFrom([ColorLibrary]::AppleOrangeLight)
+        [ColorLibrary]::BoomboxVizWaterfallGradient[8].CopyFrom([ColorLibrary]::AppleRedLight)
+    }
 
     Static [TrueColor]GetRandom() {
         Return [TrueColor]::new(

@@ -287,7 +287,7 @@ Class UIVerticalSlider : UIBase {
                 $ValueColor = [ColorLibrary]::BoomboxEqSliderFocused
                 $LabelColor = [ColorLibrary]::BoomboxEqSliderFocused
             } Elseif($this.EqEnabled -EQ $false) {
-                $ValueColor = [ColorLibrary]::SlateGrey
+                $ValueColor = [ColorLibrary]::BoomboxEqInactive
                 $LabelColor = [ColorLibrary]::UILabelActive
             } Elseif($this.CurrentValue -GT 0) {
                 $ValueColor = [ColorLibrary]::BoomboxEqSliderPos

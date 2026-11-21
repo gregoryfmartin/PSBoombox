@@ -19,6 +19,6 @@ Class ATBackgroundColor24None : ATBackgroundColor24 {
     ATBackgroundColor24None() : base([ColorLibrary]::Black) {}
 
     [String]ToAnsiControlSequenceString() {
-        Return ''
+        Return [ATControlSequences]::GenerateThemeBgString()
     }
 }

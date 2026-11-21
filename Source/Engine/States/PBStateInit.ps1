@@ -78,6 +78,17 @@ Class PBStateInit : SMState {
                 }
             }
 
+            $Core.ThemeService.Load()
+
+            If(($null -NE $Core.InitialTheme) -AND ($Core.InitialTheme.Trim().Length -GT 0)) {
+                [Boolean]$ThemeApplied = $Core.ThemeService.ApplyThemeByNameOrPath($Core.InitialTheme, $false)
+
+                If($ThemeApplied -EQ $false) {
+                    $Core.PendingStartupStatus = $Core.ThemeService.LastError
+                    $Core.PendingStartupError  = $true
+                }
+            }
+
             $Core.EqualizerService.Load()
             $Core.MediaPlayer.ApplyEqualizerFromService()
 

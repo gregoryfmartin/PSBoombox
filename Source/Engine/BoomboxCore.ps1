@@ -19,6 +19,7 @@ Set-StrictMode -Version Latest
 Class BoomboxCore : AppCore {
     [String]$InitialPath
     [String]$InitialPlaylistPath
+    [String]$InitialTheme
     [Int]$LayoutWidth
     [Int]$LayoutHeight
     [Int]$LastViewportWidth
@@ -33,11 +34,13 @@ Class BoomboxCore : AppCore {
     [MMPlaylist]$Playlist
     [MMMediaPlayer]$MediaPlayer
     [MMEqualizerService]$EqualizerService
+    [UIThemeService]$ThemeService
     [UIPlaybackControlPanel]$PlaybackPanel
     [UIDirectoryBrowserPanel]$DirectoryPanel
     [UIPlaylistPanel]$PlaylistPanel
     [UIPathInputModal]$PathModal
     [UIEqualizerModal]$EqualizerModal
+    [UIThemeModal]$ThemeModal
     [UINoticeModal]$NoticeModal
     [UIVisualizerCanvas]$VisualizerCanvas
     [List[UIVisualizerBase]]$Visualizers
@@ -51,28 +54,38 @@ Class BoomboxCore : AppCore {
     [Boolean]$PendingStartupError
 
     BoomboxCore() : base() {
-        $this.InitializeCore((Get-Location).Path, '')
+        $this.InitializeCore((Get-Location).Path, '', '')
     }
 
     BoomboxCore(
         [String]$InitialPath
     ) : base() {
-        $this.InitializeCore($InitialPath, '')
+        $this.InitializeCore($InitialPath, '', '')
     }
 
     BoomboxCore(
         [String]$InitialPath,
         [String]$InitialPlaylistPath
     ) : base() {
-        $this.InitializeCore($InitialPath, $InitialPlaylistPath)
+        $this.InitializeCore($InitialPath, $InitialPlaylistPath, '')
+    }
+
+    BoomboxCore(
+        [String]$InitialPath,
+        [String]$InitialPlaylistPath,
+        [String]$InitialTheme
+    ) : base() {
+        $this.InitializeCore($InitialPath, $InitialPlaylistPath, $InitialTheme)
     }
 
     [Void]InitializeCore(
         [String]$InitialPath,
-        [String]$InitialPlaylistPath
+        [String]$InitialPlaylistPath,
+        [String]$InitialTheme
     ) {
         $this.InitialPath                  = (($null -NE $InitialPath) -AND ($InitialPath.Length -GT 0)) ? $InitialPath : (Get-Location).Path
         $this.InitialPlaylistPath          = ($null -EQ $InitialPlaylistPath) ? '' : $InitialPlaylistPath
+        $this.InitialTheme                 = ($null -EQ $InitialTheme) ? '' : $InitialTheme
         $this.LastViewportWidth            = 0
         $this.LastViewportHeight           = 0
         $this.SimulatedViewportWidth       = 0
@@ -84,6 +97,7 @@ Class BoomboxCore : AppCore {
         $this.DirectoryService             = [MMDirectoryService]::new()
         $this.Playlist                     = [MMPlaylist]::new()
         $this.EqualizerService             = [MMEqualizerService]::new()
+        $this.ThemeService                 = [UIThemeService]::new()
         $this.MediaPlayer                  = [MMMediaPlayer]::new()
         $this.MediaPlayer.EqualizerService = $this.EqualizerService
         $this.ActiveFocusZone              = [BoomboxFocusZone]::DirectoryBrowser
@@ -161,6 +175,7 @@ Class BoomboxCore : AppCore {
         $this.PlaylistPanel.Resize($BottomTopRow, $BottomEndRow, ($LeftPaneWidth + 1), $this.LayoutWidth)
         $this.PathModal.Resize($this.LayoutWidth, $this.LayoutHeight)
         $this.EqualizerModal.Resize($this.LayoutWidth, $this.LayoutHeight)
+        $this.ThemeModal.Resize($this.LayoutWidth, $this.LayoutHeight)
         $this.NoticeModal.Resize($this.LayoutWidth, $this.LayoutHeight)
         $this.VisualizerCanvas.Initialize($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 2)), 1, 1)
         $this.VisualizerTrackLabel.SetLayout([ATCoordinates]::new(($this.LayoutHeight - 1), 2), [Math]::Max(20, ($this.LayoutWidth - 2)))
@@ -283,6 +298,7 @@ Class BoomboxCore : AppCore {
         $this.PlaylistPanel        = [UIPlaylistPanel]::new($BottomTopRow, $BottomEndRow, ($LeftPaneWidth + 1), $this.LayoutWidth)
         $this.PathModal            = [UIPathInputModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.EqualizerModal       = [UIEqualizerModal]::new($this.LayoutWidth, $this.LayoutHeight)
+        $this.ThemeModal           = [UIThemeModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.NoticeModal          = [UINoticeModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.VisualizerCanvas     = [UIVisualizerCanvas]::new($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 2)), 1, 1)
         $this.Visualizers          = [List[UIVisualizerBase]]::new()
@@ -477,6 +493,79 @@ Class BoomboxCore : AppCore {
 
             $SelfCore.AppState.Trigger('CloseEqualizer', [Context]::new(@{ [SMState]::ContextBoomboxCore = $SelfCore }))
         }.GetNewClosure()
+
+        $this.ThemeService.OnThemeChanged = {
+            Param(
+                [UIThemeService]$ChangedService
+            )
+
+            $SelfCore.RefreshAllForThemeChange()
+        }.GetNewClosure()
+
+        $this.ThemeModal.OnThemePreview = {
+            Param(
+                [UIThemeDefinition]$PreviewTheme
+            )
+
+            If($null -NE $PreviewTheme) {
+                $SelfCore.ThemeService.ApplyTheme($PreviewTheme, $false)
+                $SelfCore.FooterPanel.SetStatus("Theme preview: $($PreviewTheme.Name) (Enter to apply, Esc to cancel)")
+            }
+        }.GetNewClosure()
+
+        $this.ThemeModal.OnThemeApply = {
+            Param(
+                [UIThemeDefinition]$SelectedTheme
+            )
+
+            If($null -NE $SelectedTheme) {
+                $SelfCore.ThemeService.ApplyTheme($SelectedTheme, $true)
+                $SelfCore.FooterPanel.SetStatus("Theme applied: $($SelectedTheme.Name)")
+            }
+
+            $SelfCore.AppState.Trigger('CloseThemeSelector', [Context]::new(@{ [SMState]::ContextBoomboxCore = $SelfCore }))
+        }.GetNewClosure()
+
+        $this.ThemeModal.OnThemeCancel = {
+            Param(
+                [Context]$CancelContext
+            )
+
+            [PBStateThemeSelector]$ThemeState = $SelfCore.AppState.States['PBStateThemeSelector'] -AS [PBStateThemeSelector]
+
+            If(($null -NE $ThemeState) -AND ($null -NE $ThemeState.OriginalTheme)) {
+                $SelfCore.ThemeService.ApplyTheme($ThemeState.OriginalTheme, $false)
+            }
+
+            $SelfCore.FooterPanel.SetStatus("Theme change cancelled ($($SelfCore.ThemeService.ActiveThemeName))")
+            $SelfCore.AppState.Trigger('CloseThemeSelector', [Context]::new(@{ [SMState]::ContextBoomboxCore = $SelfCore }))
+        }.GetNewClosure()
+    }
+
+    [Void]RefreshAllForThemeChange() {
+        [TrueColor]$CanvasBg = ([ColorLibrary]::UseThemeBackground -EQ $true) ? [ColorLibrary]::ThemeBackground : $null
+
+        $this.VisualizerCanvas.SetBackgroundColor($CanvasBg)
+
+        Foreach($Viz in $this.Visualizers) {
+            If($null -NE $Viz) {
+                $Viz.RefreshPalette()
+            }
+        }
+
+        $this.SyncAllPanelsFromState()
+        $this.PlaybackPanel.SetAllElementsDirty()
+        $this.DirectoryPanel.SetAllElementsDirty()
+        $this.PlaylistPanel.SetAllElementsDirty()
+        $this.PathModal.SetAllElementsDirty()
+        $this.EqualizerModal.SetAllElementsDirty()
+        $this.ThemeModal.MarkAllDirtyForThemeChange()
+        $this.NoticeModal.SetAllElementsDirty()
+        $this.FooterPanel.SetAllElementsDirty()
+
+        $this.VisualizerTrackLabel.Dirty = $true
+        $this.VisualizerHintLabel.Dirty  = $true
+        $this.PendingScreenClear         = $true
     }
 
     [Void]InitializeStates() {
@@ -488,6 +577,7 @@ Class BoomboxCore : AppCore {
             [PBStateDirectoryPrompt]::new(),
             [PBStatePlaylistSavePrompt]::new(),
             [PBStateEqualizer]::new(),
+            [PBStateThemeSelector]::new(),
             [PBStateNoticeModal]::new(),
             [PBStateVisualizer]::new(),
             [PBStateBufferTooSmall]::new(),
@@ -504,6 +594,8 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStatePlaylistSavePrompt', 'CloseSavePlaylistPrompt', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenEqualizer', 'PBStateEqualizer'),
             [SMTransition]::new('PBStateEqualizer', 'CloseEqualizer', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateMainPlayer', 'OpenThemeSelector', 'PBStateThemeSelector'),
+            [SMTransition]::new('PBStateThemeSelector', 'CloseThemeSelector', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenNoticeModal', 'PBStateNoticeModal'),
             [SMTransition]::new('PBStateNoticeModal', 'CloseNoticeModal', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenVisualizer', 'PBStateVisualizer'),
@@ -515,12 +607,14 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStateDirectoryPrompt', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStatePlaylistSavePrompt', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateEqualizer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateThemeSelector', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateNoticeModal', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateVisualizer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateMainPlayer', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateDirectoryPrompt', 'PBStateDirectoryPrompt'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStatePlaylistSavePrompt', 'PBStatePlaylistSavePrompt'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateEqualizer', 'PBStateEqualizer'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateThemeSelector', 'PBStateThemeSelector'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateNoticeModal', 'PBStateNoticeModal'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateVisualizer', 'PBStateVisualizer'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Quit', 'PBStateShutdown')

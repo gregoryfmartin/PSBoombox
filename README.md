@@ -14,6 +14,7 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 - 10-band equalizer with a few baked in presets and the ability to create your own.
 - A fancy little Visualizer Mode. Because what the hell.
 - Directory browsing with an in-memory playlist. Also supports saving and loading common playlist formats: M3U, M3U8, PLS, and WPL.
+- Full-screen Dark & Light color theming powered by embedded Gogh palettes (plus `PSBoombox Default` and custom Gogh JSON files via `-Theme`), complete with a live-preview tabbed Theme Selector (`T`).
 - Responsive layout. Will resize with the buffer window/pane. If the buffer drops below certain dimensions, you'll be smacked in your face.
 
 ---
@@ -58,12 +59,14 @@ Start-PSBoombox
 | --- | --- | --- | --- |
 | `-Path` | `[String]` | Current Working Directory | Optional starting directory displayed in the Directory Browser pane (relative or rooted paths supported). If omitted, PSBoombox will use the current directory you started it from. |
 | `-Playlist` | `[String]` | Empty (`''`) | Optional path to a `.m3u`, `.m3u8`, `.pls`, or `.wpl` playlist file to load on startup. If omitted, PSBoombox will use a default, empty, in-memory playlist. |
+| `-Theme` | `[String]` | Persisted / `'PSBoombox Default'` | Optional built-in theme name (e.g. `'Catppuccin Latte'`, `'Dracula'`, `'Nord'`) or path to a custom Gogh-format `.json` color scheme file. |
 
 ### Startup Behavior
 
 - **`Start-PSBoombox`** *(no arguments)*: Opens the Directory Browser in the current working directory, starts with an empty playlist, and automatically appends any supported audio files located in it.
 - **`Start-PSBoombox -Path 'C:\Music'`**: Starts the Directory Browser in `C:\Music` and auto-populates the playlist with any supported audio files found there.
 - **`Start-PSBoombox -Playlist '.\Favorites.m3u8'`**: Loads tracks from the specified playlist file on startup (bypassing CWD auto-population) and focuses the Playlist pane automatically when tracks are loaded.
+- **`Start-PSBoombox -Theme 'Catppuccin Latte'`**: Launches PSBoombox with the specified built-in Gogh preset or custom Gogh `.json` theme file.
 
 ### Examples
 
@@ -79,6 +82,10 @@ Start-PSBoombox -Playlist '.\Playlists\PissMyNeighborsOffWithThis.m3u8'
 
 # Browse one folder while pre-loading a playlist from elsewhere
 Start-PSBoombox -Path 'D:\Audio' -Playlist 'D:\Playlists\Favorites.pls'
+
+# Launch with a built-in Light theme or custom Gogh JSON file
+Start-PSBoombox -Theme 'Catppuccin Latte'
+Start-PSBoombox -Theme '.\my-custom-gogh-theme.json'
 ```
 
 ---
@@ -206,6 +213,17 @@ Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer M
 
 ---
 
+### Customizing Color Themes (`T`)
+
+Press `T` from the main screen to open the tabbed **Themes** selector modal, organizing 21 embedded palettes (all 20 [Gogh](https://github.com/Gogh-Co/Gogh) schemes plus `PSBoombox Default`) across **Dark** and **Light** tabs:
+
+- **Dark Tab (`11`)**: `PSBoombox Default`, `Catppuccin Mocha`, `Dracula`, `Gruvbox Dark`, `Nord`, `One Dark`, `Tokyo Night`, `Solarized Dark`, `Everforest Dark`, `Rose Pine`, `Monokai Dark`.
+- **Light Tab (`10`)**: `Catppuccin Latte`, `Gruvbox Light`, `Solarized Light`, `One Light`, `GitHub Light`, `Tokyo Night Light`, `Everforest Light`, `Rose Pine Dawn`, `Nord Light`, `Ayu Light`.
+- **Live Preview & Cancel Rollback**: Cycling through themes (`Up` / `Down`) or switching tabs (`Left` / `Right`) immediately re-themes the entire UI background, foreground, panels, modal swatches, and visualizer palettes. Press `Enter` (or select `[ Apply ]`) to commit and save your selection to `%APPDATA%\PSBoombox\theme.json`, or press `Esc` (or `[ Cancel ]`) to revert to your previous theme.
+- **Custom Gogh JSON Themes**: Launch with `Start-PSBoombox -Theme '.\my-theme.json'` using any standard Gogh-format JSON file (`background`, `foreground`, `cursor`, `color_01`–`color_16`).
+
+---
+
 ## Keyboard Shortcuts
 
 ### Global Shortcuts (Main Screen)
@@ -222,6 +240,7 @@ Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer M
 | `M` | Toggle Mute |
 | `E` | Open **Equalizer (10-Band ISO)** modal |
 | `V` | Enter **Visualizer Mode** *(requires playing non-MIDI audio track)* |
+| `T` | Open **Themes** selector modal (`Dark` / `Light`) |
 | `G` / `F2` | Open **Go to Directory** modal |
 | `W` | Open **Save Playlist** modal |
 | `Q` / `Esc` | Quit PSBoombox cleanly |
@@ -301,3 +320,13 @@ Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer M
 | `+` / `-` / `M` | Adjust volume ±5% or toggle Mute |
 | `R` / `H` | Cycle Repeat mode / Toggle Shuffle |
 | `Q` | Quit PSBoombox cleanly |
+
+### Theme Selector Modal (`T`)
+
+| Key | Action |
+| --- | --- |
+| `Left` / `Right` | Switch between **Dark** and **Light** tabs *(previews immediately)* |
+| `Up` / `Down` (`PageUp`/`PageDown`/`Home`/`End`) | Browse themes in the active tab *(previews immediately across entire UI)* |
+| `Tab` / `Shift+Tab` | Move focus across Tabs, Theme List, `[ Apply ]`, and `[ Cancel ]` |
+| `Enter` | Apply selected theme and persist to `%APPDATA%\PSBoombox\theme.json` |
+| `Esc` | Cancel selection and revert back to the active theme |

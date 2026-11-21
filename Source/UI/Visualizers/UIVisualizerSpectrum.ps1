@@ -21,7 +21,12 @@ Class UIVisualizerSpectrum : UIVisualizerBase {
     [Int]$PackedPeakColor
 
     UIVisualizerSpectrum() : base('Spectrum Analyzer') {
-        $this.NativeRenderer  = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
+        $this.NativeRenderer = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
+
+        $this.RefreshPalette()
+    }
+
+    [Void]RefreshPalette() {
         $this.PackedPalette   = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizSpectrumGradient)
         $this.PackedPeakColor = [UIVisualizerCanvas]::PackColor([ColorLibrary]::BoomboxVizPeakCap)
     }

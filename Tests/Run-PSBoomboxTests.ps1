@@ -45,6 +45,7 @@ Invoke-TestCase -Name 'Module Manifest and Export Verification' -Body {
     $CmdInfo = Get-Command -Name 'Start-PSBoombox' -Module 'PSBoombox'
     Assert-True ($CmdInfo.Parameters.ContainsKey('Path') -EQ $true) 'Start-PSBoombox must expose -Path'
     Assert-True ($CmdInfo.Parameters.ContainsKey('Playlist') -EQ $true) 'Start-PSBoombox must expose -Playlist'
+    Assert-True ($CmdInfo.Parameters.ContainsKey('Theme') -EQ $true) 'Start-PSBoombox must expose -Theme'
 }
 
 Invoke-TestCase -Name 'Style and Pure Native PowerShell Audit' -Body {
@@ -83,8 +84,10 @@ If($null -NE $ModuleScope) {
 
         . "$($TestRoot)\Test-Helpers.ps1"
 
-        [String]$IsolatedEqConfigDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_EqCfgTest_$([Guid]::NewGuid().ToString('N'))"
+        [String]$IsolatedEqConfigDir    = Join-Path ([Path]::GetTempPath()) "PSBoombox_EqCfgTest_$([Guid]::NewGuid().ToString('N'))"
+        [String]$IsolatedThemeConfigDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_ThemeCfgTest_$([Guid]::NewGuid().ToString('N'))"
         [MMEqualizerService]::ConfigDirectoryOverride = $IsolatedEqConfigDir
+        [UIThemeService]::ConfigDirectoryOverride     = $IsolatedThemeConfigDir
 
         Try {
 
@@ -1190,10 +1193,186 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $TempRoot -Recurse -Force -ErrorAction Stop
         }
     }
+
+    & $InvokeCase -Name 'Theming System (Embedded Gogh JSON, Tabbed Live Preview, Cancel Revert, Visualizer Re-Theming, Persistence, and -Theme)' -Body {
+        [String]$ThemeCfgDir  = Join-Path ([Path]::GetTempPath()) "PSBoombox_ThemeSuiteCfg_$([Guid]::NewGuid().ToString('N'))"
+        [String]$MediaTempDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_ThemeSuiteMedia_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $ThemeCfgDir -ItemType Directory -Force
+        $null = New-Item -Path $MediaTempDir -ItemType Directory -Force
+
+        [String]$PrevThemeOverride = [UIThemeService]::ConfigDirectoryOverride
+        [UIThemeService]::ConfigDirectoryOverride = $ThemeCfgDir
+
+        Try {
+            New-TestWavFile -FilePath (Join-Path $MediaTempDir 'palette_song.wav') -DurationMs 800
+
+            # 1. EMBEDDED GOGH JSON CATALOG (PSBOOMBOX DEFAULT + 10 DARK + 10 LIGHT)
+            [UIThemeService]$Svc = [UIThemeService]::new($ThemeCfgDir)
+            Assert-Equal $Svc.AllThemes.Count 21 'Embedded Themes.json must define 21 themes'
+            Assert-Equal $Svc.DarkThemes.Count 11 'Dark tab must have PSBoombox Default + 10 Gogh Dark themes'
+            Assert-Equal $Svc.LightThemes.Count 10 'Light tab must have 10 Gogh Light themes'
+            Assert-Equal $Svc.DarkThemes[0].Name 'PSBoombox Default' 'First Dark theme must be PSBoombox Default'
+
+            $Svc.Load()
+            Assert-Equal $Svc.ActiveThemeName 'PSBoombox Default' 'Initial theme defaults to PSBoombox Default'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#0C0C0C' 'Default background hex must be #0C0C0C'
+
+            # 2. OPTION A BACKGROUND, IN-PLACE CACHED COLOR MUTATION & VISUALIZER PALETTES
+            [BoomboxCore]$Core = [BoomboxCore]::new($MediaTempDir, '')
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Entered MainPlayer'
+
+            [UILabel]$CachedTrackLabel = $Core.PlaybackPanel.TrackValueLabel
+            [Int]$BeforePeakColor     = ($Core.Visualizers[0] -AS [UIVisualizerSpectrum]).PackedPeakColor
+            [Int[]]$BeforeSpecPal     = @((($Core.Visualizers[0] -AS [UIVisualizerSpectrum]).PackedPalette))
+
+            # PRESS T -> OPEN TABBED THEME SELECTOR MODAL
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateThemeSelector' 'T opens PBStateThemeSelector'
+            Assert-True ($Core.ThemeModal -IS [UITabContainer]) 'ThemeModal must inherit UITabContainer'
+            Assert-Equal $Core.ThemeModal.TabGroup.Tabs.Count 2 'ThemeModal must have 2 tabs (Dark and Light)'
+            Assert-Equal $Core.ThemeModal.ActivePageIndex 0 'Dark tab active initially for PSBoombox Default'
+
+            # PRESS DOWNARROW -> LIVE PREVIEW CATPPUCCIN MOCHA (#1E1E2E)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.ThemeService.ActiveThemeName 'Catppuccin Mocha' 'DownArrow must immediately preview Catppuccin Mocha'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#1E1E2E' 'Background mutates live to #1E1E2E'
+
+            # PRESS RIGHTARROW -> SWITCH TO LIGHT TAB & LIVE PREVIEW CATPPUCCIN LATTE (#EFF1F5)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.ThemeModal.ActivePageIndex 1 'RightArrow switches to Light tab'
+            Assert-Equal $Core.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Switching to Light tab must immediately preview Catppuccin Latte'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#EFF1F5' 'Light theme background mutates live to #EFF1F5'
+            Assert-Equal $CachedTrackLabel.ActiveColor.ToHexString() '#4C4F69' 'Cached UILabel ActiveColor must mutate in place to #4C4F69'
+            Assert-True ($CachedTrackLabel.ToAnsiControlSequenceString().Contains('48;2;239;241;245m')) 'Option A rendering must emit 24-bit theme background escape sequence'
+            Assert-Equal $Core.VisualizerCanvas.NativeCanvas.DefaultBgRgb 0xEFF1F5 'VisualizerCanvas DefaultBgRgb must track active ThemeBackground'
+
+            [Int]$LightPeakColor = ($Core.Visualizers[0] -AS [UIVisualizerSpectrum]).PackedPeakColor
+            [Int[]]$LightSpecPal = @((($Core.Visualizers[0] -AS [UIVisualizerSpectrum]).PackedPalette))
+            Assert-True ($LightPeakColor -NE $BeforePeakColor) 'Visualizer PackedPeakColor must re-theme cleanly'
+            Assert-True ($LightSpecPal[0] -NE $BeforeSpecPal[0]) 'Visualizer PackedPalette must re-theme cleanly'
+
+            # VERIFY RESIZE + BUFFER-TOO-SMALL SUSPEND/RESUME WHILE THEME MODAL IS OPEN
+            $Core.SetSimulatedViewport(70, 20)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' 'Shrinking below 80x24 suspends PBStateThemeSelector cleanly'
+            Assert-Equal $Core.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Preview theme stays active in BufferTooSmall'
+
+            $Core.SetSimulatedViewport(110, 32)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateThemeSelector' 'Growing back >= 80x24 resumes PBStateThemeSelector'
+
+            # PRESS ESCAPE -> REVERT BACK TO PRE-MODAL THEME (PSBOOMBOX DEFAULT)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Escape closes PBStateThemeSelector back to MainPlayer'
+            Assert-Equal $Core.ThemeService.ActiveThemeName 'PSBoombox Default' 'Cancel must revert ActiveThemeName back to PSBoombox Default'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#0C0C0C' 'Cancel must revert ThemeBackground back to #0C0C0C'
+            Assert-Equal $Core.VisualizerCanvas.NativeCanvas.DefaultBgRgb 0x0C0C0C 'Cancel must revert VisualizerCanvas DefaultBgRgb back to 0x0C0C0C'
+            Assert-False ([File]::Exists((Join-Path $ThemeCfgDir 'theme.json'))) 'Cancel must not persist theme.json'
+
+            # 3. APPLY + PERSISTENCE (T -> LIGHT TAB -> ENTER -> THEME.JSON -> FRESH LAUNCH)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]13, [ConsoleKey]::Enter, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Enter applies selected theme and returns to MainPlayer'
+            Assert-Equal $Core.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Applied theme must be Catppuccin Latte'
+            Assert-True ([File]::Exists((Join-Path $ThemeCfgDir 'theme.json'))) 'Applying theme must write theme.json'
+            $Core.Cleanup()
+
+            # RESET COLOR LIBRARY THEN BOOT A FRESH CORE TO TEST PERSISTENCE
+            [ColorLibrary]::ResetSemanticDefaults()
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#0C0C0C' 'ResetSemanticDefaults restores #0C0C0C prior to launch'
+
+            [BoomboxCore]$RestartCore = [BoomboxCore]::new($MediaTempDir, '')
+            $RestartCore.InitializeStates()
+            $RestartCore.Logic(0.016)
+            Assert-Equal $RestartCore.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Fresh BoomboxCore launch must restore persisted theme from theme.json'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#EFF1F5' 'Restored Light theme background must be #EFF1F5'
+            $RestartCore.Cleanup()
+
+            # 4. -THEME OVERRIDE: BUILT-IN NAME & CUSTOM GOGH JSON FILE + INVALID FALLBACK
+            [BoomboxCore]$CliNamedCore = [BoomboxCore]::new($MediaTempDir, '', 'Dracula')
+            $CliNamedCore.InitializeStates()
+            $CliNamedCore.Logic(0.016)
+            Assert-Equal $CliNamedCore.ThemeService.ActiveThemeName 'Dracula' '-Theme named override must apply Dracula on startup'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#282A36' 'Dracula background hex must be #282A36'
+            Assert-False $CliNamedCore.PendingStartupError 'Valid -Theme must not raise startup error'
+            $CliNamedCore.Cleanup()
+
+            [String]$CustomJsonPath = Join-Path $MediaTempDir 'custom_gogh.json'
+            [File]::WriteAllText($CustomJsonPath, @'
+{
+  "name": "Midnight Teal Custom",
+  "background": "#112233",
+  "foreground": "#DDEEFF",
+  "cursor": "#FFCC66",
+  "color_01": "#112233",
+  "color_02": "#FF6B6B",
+  "color_03": "#6BCB77",
+  "color_04": "#FFD93D",
+  "color_05": "#4D96FF",
+  "color_06": "#C77DFF",
+  "color_07": "#4ECDC4",
+  "color_08": "#DDEEFF",
+  "color_09": "#556677",
+  "color_10": "#FF8E8E",
+  "color_11": "#8CE99A",
+  "color_12": "#FFE066",
+  "color_13": "#74C0FC",
+  "color_14": "#E599F7",
+  "color_15": "#66D9E8",
+  "color_16": "#FFFFFF"
+}
+'@)
+
+            [BoomboxCore]$CustomCore = [BoomboxCore]::new($MediaTempDir, '', $CustomJsonPath)
+            $CustomCore.InitializeStates()
+            $CustomCore.Logic(0.016)
+            Assert-Equal $CustomCore.ThemeService.ActiveThemeName 'Midnight Teal Custom' 'Custom Gogh JSON -Theme must load custom theme name'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#112233' 'Custom Gogh JSON background must be #112233'
+
+            # OPEN MODAL -> PREVIEW ANOTHER -> CANCEL -> MUST REVERT TO CUSTOM GOGH THEME
+            $CustomCore.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
+            $CustomCore.Logic(0.033)
+            $CustomCore.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $CustomCore.Logic(0.033)
+            Assert-Equal $CustomCore.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Preview switched away from custom theme'
+            $CustomCore.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $CustomCore.Logic(0.033)
+            Assert-Equal $CustomCore.ThemeService.ActiveThemeName 'Midnight Teal Custom' 'Cancel must revert back to custom -Theme'
+            Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#112233' 'Cancel must revert background back to custom #112233'
+            $CustomCore.Cleanup()
+
+            [BoomboxCore]$BadThemeCore = [BoomboxCore]::new($MediaTempDir, '', 'NonExistentThemeName')
+            $BadThemeCore.InitializeStates()
+            $BadThemeCore.Logic(0.016)
+            Assert-True $BadThemeCore.PendingStartupError 'Unknown -Theme must set PendingStartupError cleanly'
+            Assert-Equal $BadThemeCore.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Unknown -Theme falls back safely to persisted theme'
+            $BadThemeCore.Cleanup()
+        } Finally {
+            [UIThemeService]::ConfigDirectoryOverride = $PrevThemeOverride
+            [ColorLibrary]::ResetSemanticDefaults()
+            Remove-Item -Path $ThemeCfgDir -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $MediaTempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
+            [UIThemeService]::ConfigDirectoryOverride     = ''
+            [ColorLibrary]::ResetSemanticDefaults()
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {
                 Remove-Item -Path $IsolatedEqConfigDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            If([Directory]::Exists($IsolatedThemeConfigDir) -EQ $true) {
+                Remove-Item -Path $IsolatedThemeConfigDir -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
     })

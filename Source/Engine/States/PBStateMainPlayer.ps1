@@ -100,6 +100,13 @@ Class PBStateMainPlayer : SMState {
                         Break
                     }
 
+                    If($KeyInfo.Key -EQ [ConsoleKey]::T) {
+                        $Core.AppState.Trigger('OpenThemeSelector', $Context)
+                        $DidTransition = $true
+
+                        Break
+                    }
+
                     If($KeyInfo.Key -EQ [ConsoleKey]::V) {
                         $Core.TryOpenVisualizer($Context)
 
@@ -276,7 +283,7 @@ Class PBStateMainPlayer : SMState {
 
             If($Core.PendingScreenClear -EQ $true) {
                 If([Console]::IsOutputRedirected -EQ $false) {
-                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                    Write-Host "$([ATControlSequences]::GenerateThemeClearScreenString())" -NoNewline
                 }
 
                 $Core.PendingScreenClear = $false

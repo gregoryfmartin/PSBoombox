@@ -21,7 +21,12 @@ Class UIVisualizerWaterfall : UIVisualizerBase {
 
     UIVisualizerWaterfall() : base('Spectrogram Waterfall') {
         $this.NativeRenderer = [MMEqualizerEngineNative]::CreateVisualizerRenderer()
-        $this.PackedPalette  = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizWaterfallGradient)
+
+        $this.RefreshPalette()
+    }
+
+    [Void]RefreshPalette() {
+        $this.PackedPalette = [UIVisualizerCanvas]::PackPalette([ColorLibrary]::BoomboxVizWaterfallGradient)
     }
 
     [Void]Reset() {

@@ -55,7 +55,7 @@ Class PBStateEqualizer : SMState {
 
             If($Core.PendingScreenClear -EQ $true) {
                 If([Console]::IsOutputRedirected -EQ $false) {
-                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                    Write-Host "$([ATControlSequences]::GenerateThemeClearScreenString())" -NoNewline
                 }
 
                 $Core.PendingScreenClear = $false
@@ -164,7 +164,7 @@ Class PBStateEqualizer : SMState {
 
             If($Core.PendingScreenClear -EQ $true) {
                 If([Console]::IsOutputRedirected -EQ $false) {
-                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                    Write-Host "$([ATControlSequences]::GenerateThemeClearScreenString())" -NoNewline
                 }
 
                 $Core.PendingScreenClear = $false

@@ -259,7 +259,7 @@ Class PBStateVisualizer : SMState {
 
                 If([Console]::IsOutputRedirected -EQ $false) {
                     [String]$FrameAnsi   = $Core.VisualizerCanvas.BuildFrameAnsi($false, $TrailingAnsi)
-                    [String]$FullPayload = "$([ATControlSequences]::DrawOptimizeOn)$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)$($FrameAnsi)$([ATControlSequences]::DrawOptimizeOff)"
+                    [String]$FullPayload = "$([ATControlSequences]::DrawOptimizeOn)$([ATControlSequences]::GenerateThemeClearScreenString())$($FrameAnsi)$([ATControlSequences]::DrawOptimizeOff)"
 
                     If($Core.VisualizerCanvas.NativeCanvas.WriteConsoleUtf16($FullPayload) -EQ $false) {
                         Write-Host $FullPayload -NoNewline
