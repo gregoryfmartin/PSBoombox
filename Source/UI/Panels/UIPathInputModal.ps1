@@ -110,6 +110,31 @@ Class UIPathInputModal : UIPanel {
         $this.UiElementListing[4] = $this.CancelButton
     }
 
+    [Void]Resize(
+        [Int]$LayoutWidth,
+        [Int]$LayoutHeight
+    ) {
+        [Int]$ModalWidth  = [Math]::Clamp(($LayoutWidth - 10), 56, 78)
+        [Int]$ModalHeight = 8
+        [Int]$TopRow      = [Math]::Max(3, [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2))
+        [Int]$LeftCol     = [Math]::Max(3, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
+
+        $this.SetBounds([ATCoordinates]::new($TopRow, $LeftCol), [ATCoordinates]::new(($TopRow + $ModalHeight), ($LeftCol + $ModalWidth)))
+
+        [Int]$InnerWidth        = [Math]::Max(20, ($this.Width - 4))
+        [Int]$InputVisibleWidth = [Math]::Max(16, ($this.Width - 8))
+
+        $this.PromptLabel.SetLayout([ATCoordinates]::new(($TopRow + 2), ($LeftCol + 2)), $InnerWidth)
+        $this.PathInput.SetLayout([ATCoordinates]::new(($TopRow + 3), ($LeftCol + 2)), $InputVisibleWidth)
+        $this.ErrorLabel.SetLayout([ATCoordinates]::new(($TopRow + 5), ($LeftCol + 2)), $InnerWidth)
+        $this.ConfirmButton.SetCoordinates([ATCoordinates]::new(($TopRow + 6), ($LeftCol + 2)))
+        $this.CancelButton.SetCoordinates([ATCoordinates]::new(($TopRow + 6), ($LeftCol + 12)))
+
+        $this.InteriorClearDirty = $true
+
+        $this.SetAllElementsDirty()
+    }
+
     [Void]Configure(
         [String]$Title,
         [String]$PromptText,

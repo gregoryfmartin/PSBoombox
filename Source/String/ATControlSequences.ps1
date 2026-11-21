@@ -26,6 +26,10 @@ Class ATControlSequences {
     Static [String]$CursorShow              = "`e[?25h"
     Static [String]$DrawOptimizeOn          = "`e[?2026h"
     Static [String]$DrawOptimizeOff         = "`e[?2026l"
+    Static [String]$ClearScreen             = "`e[2J"
+    Static [String]$CursorHome              = "`e[H"
+    Static [String]$AltScreenEnter          = "`e[?1049h"
+    Static [String]$AltScreenExit           = "`e[?1049l"
 
     Static [String]GenerateFG24String(
         [TrueColor]$Color

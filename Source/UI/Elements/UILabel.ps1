@@ -19,6 +19,7 @@ Class UILabel : UIBase {
     [TrueColor]$ActiveColor
     [TrueColor]$InactiveColor
     [Int]$MaxWidth
+    [String]$RawText
 
     UILabel() : base() {
         $this.Initialize(
@@ -89,6 +90,7 @@ Class UILabel : UIBase {
         $this.ActiveColor            = ($null -EQ $ActiveColor) ? [ColorLibrary]::UILabelActive : $ActiveColor
         $this.InactiveColor          = [ColorLibrary]::UILabelInactive
         $this.MaxWidth               = [Math]::Max(0, $MaxWidth)
+        $this.RawText                = ''
         $this.UseATReset             = $true
         $this.Dirty                  = $true
         $this.Prefix.ForegroundColor = [ATForegroundColor24]::new($this.ActiveColor)
@@ -130,6 +132,7 @@ Class UILabel : UIBase {
         [String]$Text
     ) {
         [String]$SafeText = ($null -EQ $Text) ? '' : $Text
+        $this.RawText     = $SafeText
 
         If($this.MaxWidth -GT 0) {
             [String]$Clipped = Format-TruncatedText $SafeText $this.MaxWidth
@@ -142,6 +145,22 @@ Class UILabel : UIBase {
         }
 
         $this.Dirty = $true
+    }
+
+    [Void]SetLayout(
+        [ATCoordinates]$DrawCoordinates,
+        [Int]$MaxWidth
+    ) {
+        $this.DrawCoordinates = ($null -EQ $DrawCoordinates) ? [ATCoordinatesNone]::new() : $DrawCoordinates
+        $this.MaxWidth        = [Math]::Max(0, $MaxWidth)
+
+        If($this.MaxWidth -GT 0) {
+            $this.SetBlankSize($this.MaxWidth)
+        } Else {
+            $this.SetBlankSize($this.RawText.Length)
+        }
+
+        $this.SetText($this.RawText)
     }
 
     [Void]SetActiveColor(

@@ -292,6 +292,11 @@ Class ColorLibrary {
     Static [TrueColor]$BoomboxVizHint                 = [ColorLibrary]::LightSlateGrey
     Static [TrueColor]$BoomboxVizPeakCap              = [ColorLibrary]::White
     Static [TrueColor]$BoomboxVizAxis                 = [ColorLibrary]::DarkSlateGrey
+    Static [TrueColor]$BoomboxWarningBorder           = [ColorLibrary]::AppleYellowLight
+    Static [TrueColor]$BoomboxWarningTitle            = [ColorLibrary]::AppleYellowLight
+    Static [TrueColor]$BoomboxWarningText             = [ColorLibrary]::GhostWhite
+    Static [TrueColor]$BoomboxWarningDimOk            = [ColorLibrary]::AppleGreenLight
+    Static [TrueColor]$BoomboxWarningDimBad           = [ColorLibrary]::AppleRedLight
     Static [TrueColor[]]$BoomboxVizSpectrumGradient  = @(
         [ColorLibrary]::DeepSkyBlue,
         [ColorLibrary]::AppleCyanLight,

@@ -27,6 +27,20 @@ Class PBStateVisualizer : SMState {
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
 
+            If($Core.IsSuspendedForResize -EQ $true) {
+                $Core.IsSuspendedForResize = $false
+                $Core.PendingScreenClear   = $true
+
+                $Core.VisualizerCanvas.InvalidateAll()
+                $Core.SetTargetFps(60)
+                $Core.SyncVisualizerTrackLabel()
+
+                $Core.VisualizerTrackLabel.Dirty = $true
+                $Core.VisualizerHintLabel.Dirty  = $true
+
+                Return
+            }
+
             $Core.PlaybackPanel.UnfocusAllElements($Context)
             $Core.DirectoryPanel.UnfocusAllElements($Context)
             $Core.PlaylistPanel.UnfocusAllElements($Context)
@@ -36,9 +50,7 @@ Class PBStateVisualizer : SMState {
             $Core.PlaylistPanel.Deactivate($Context)
             $Core.FooterPanel.Deactivate($Context)
 
-            If([Console]::IsOutputRedirected -EQ $false) {
-                Clear-Host
-            }
+            $Core.PendingScreenClear = $true
 
             $Core.VisualizerCanvas.InvalidateAll()
             $Core.SetTargetFps(60)
@@ -67,11 +79,16 @@ Class PBStateVisualizer : SMState {
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
 
             $Core.SetTargetFps(30)
+
+            If($Core.IsSuspendedForResize -EQ $true) {
+                Return
+            }
+
             $Core.VisualizerTrackLabel.Deactivate($Context)
             $Core.VisualizerHintLabel.Deactivate($Context)
 
             If([Console]::IsOutputRedirected -EQ $false) {
-                Clear-Host
+                $Core.PendingScreenClear = $true
             } Else {
                 $Core.VisualizerCanvas.ClearScreenBuffer()
             }
@@ -237,7 +254,22 @@ Class PBStateVisualizer : SMState {
                 $Core.VisualizerHintLabel.Dirty   = $false
             }
 
-            $Core.VisualizerCanvas.DrawFrame($true, $TrailingAnsi)
+            If($Core.PendingScreenClear -EQ $true) {
+                $Core.PendingScreenClear = $false
+
+                If([Console]::IsOutputRedirected -EQ $false) {
+                    [String]$FrameAnsi   = $Core.VisualizerCanvas.BuildFrameAnsi($false, $TrailingAnsi)
+                    [String]$FullPayload = "$([ATControlSequences]::DrawOptimizeOn)$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)$($FrameAnsi)$([ATControlSequences]::DrawOptimizeOff)"
+
+                    If($Core.VisualizerCanvas.NativeCanvas.WriteConsoleUtf16($FullPayload) -EQ $false) {
+                        Write-Host $FullPayload -NoNewline
+                    }
+                } Else {
+                    $Core.VisualizerCanvas.DrawFrame($true, $TrailingAnsi)
+                }
+            } Else {
+                $Core.VisualizerCanvas.DrawFrame($true, $TrailingAnsi)
+            }
         }
     }
 }

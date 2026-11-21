@@ -20,6 +20,7 @@ Class UIDirectoryBrowserPanel : UIPanel {
     [UIList]$DirectoryList
     [Int]$ListDisplayWidth
     [String]$LastRenderedPath
+    [Int]$LastMediaCount
 
     UIDirectoryBrowserPanel(
         [Int]$TopRow,
@@ -30,6 +31,7 @@ Class UIDirectoryBrowserPanel : UIPanel {
         $this.LeftTop          = [ATCoordinates]::new($TopRow, $LeftCol)
         $this.RightBottom      = [ATCoordinates]::new($BottomRow, $RightCol)
         $this.LastRenderedPath = ''
+        $this.LastMediaCount   = 0
 
         $this.UpdateDimensions()
         $this.SetupTitle('Directory', [ColorLibrary]::TextActiveColor)
@@ -44,6 +46,33 @@ Class UIDirectoryBrowserPanel : UIPanel {
         $this.DirectoryList.SetMaxDisplayWidth($this.ListDisplayWidth)
 
         $this.UiElementListing[0] = $this.DirectoryList
+    }
+
+    [Void]Resize(
+        [Int]$TopRow,
+        [Int]$BottomRow,
+        [Int]$LeftCol,
+        [Int]$RightCol
+    ) {
+        $this.SetBounds([ATCoordinates]::new($TopRow, $LeftCol), [ATCoordinates]::new($BottomRow, $RightCol))
+
+        [Int]$VisibleRows      = [Math]::Max(3, ($this.Height - 1))
+        $this.ListDisplayWidth = [Math]::Max(10, ($this.Width - 3))
+
+        $this.DirectoryList.SetLayout(
+            [ATCoordinates]::new(($TopRow + 1), ($LeftCol + 2)),
+            $VisibleRows,
+            $this.ListDisplayWidth
+        )
+
+        If($this.LastRenderedPath.Length -GT 0) {
+            [Int]$MaxTitlePathLen = [Math]::Max(8, ($this.Width - 22))
+            [String]$ClippedPath  = Format-TruncatedText $this.LastRenderedPath $MaxTitlePathLen
+
+            $this.SetupTitle("Dir: $($ClippedPath) ($($this.LastMediaCount))", $this.TitleColor)
+        }
+
+        $this.SetAllElementsDirty()
     }
 
     [MMDirectoryEntry]GetSelectedEntry() {
@@ -66,6 +95,7 @@ Class UIDirectoryBrowserPanel : UIPanel {
 
         [Int]$PreviousIndex   = $this.DirectoryList.SelectedIndex
         [Int]$MediaCount      = $DirService.GetMediaFileCount()
+        $this.LastMediaCount  = $MediaCount
         [Int]$MaxTitlePathLen = [Math]::Max(8, ($this.Width - 22))
         [String]$ClippedPath  = Format-TruncatedText $DirService.CurrentPath $MaxTitlePathLen
 

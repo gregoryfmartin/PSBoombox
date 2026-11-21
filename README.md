@@ -14,6 +14,7 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 - 10-band equalizer with a few baked in presets and the ability to create your own.
 - A fancy little Visualizer Mode. Because what the hell.
 - Directory browsing with an in-memory playlist. Also supports saving and loading common playlist formats: M3U, M3U8, PLS, and WPL.
+- Responsive layout. Will resize with the buffer window/pane. If the buffer drops below certain dimensions, you'll be smacked in your face.
 
 ---
 
@@ -24,7 +25,7 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 | **Operating System** | **Windows 10 / Windows 11** - Plans to look at Mac and Linux are forthcoming. |
 | **PowerShell** | **PowerShell Core 7.0+** Windows PowerShell 5.1 is not supported and likely won't be. |
 | **Terminal Emulator** | VT/ANSI terminal with **24-bit TrueColor**, **Unicode** glyph support, and synchronized rendering (**Windows Terminal** with `Cascadia Mono` or `Consolas` recommended). |
-| **Terminal Size** | Minimum **80 × 24** cells. Layout scales dynamically from `80 × 24` up to `160 × 50` cells. |
+| **Terminal Size** | Minimum **80 × 24** cells. Layout scales. |
 | **Audio Output** | Speakers. Your mouth isn't acceptable. |
 | **Dependencies** | A computer, fingers to type with, brains. |
 

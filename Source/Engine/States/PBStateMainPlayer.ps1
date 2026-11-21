@@ -27,10 +27,10 @@ Class PBStateMainPlayer : SMState {
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
 
-            If([Console]::IsOutputRedirected -EQ $false) {
-                Write-Host "$([ATControlSequences]::CursorHide)" -NoNewline
-                Clear-Host
-            }
+            $Core.EnterAlternateScreen()
+
+            $Core.IsSuspendedForResize = $false
+            $Core.PendingScreenClear   = $true
 
             $Core.PlaybackPanel.Activate($Context)
             $Core.DirectoryPanel.Activate($Context)
@@ -277,6 +277,15 @@ Class PBStateMainPlayer : SMState {
             }
 
             Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+
+            If($Core.PendingScreenClear -EQ $true) {
+                If([Console]::IsOutputRedirected -EQ $false) {
+                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                }
+
+                $Core.PendingScreenClear = $false
+            }
+
             $Core.PlaybackPanel.Draw()
             $Core.DirectoryPanel.Draw()
             $Core.PlaylistPanel.Draw()

@@ -141,6 +141,38 @@ Class UIPlaybackControlPanel : UIPanel {
         $this.UiElementListing[17] = $this.VolumeControl
     }
 
+    [Void]Resize(
+        [Int]$LayoutWidth
+    ) {
+        [Int]$SafeWidth = [Math]::Max(80, $LayoutWidth)
+
+        $this.SetBounds([ATCoordinates]::new(1, 1), [ATCoordinates]::new(5, $SafeWidth))
+
+        $this.TrackPrefixLabel.SetLayout([ATCoordinates]::new(2, 3), 0)
+        $this.TrackValueLabel.SetLayout([ATCoordinates]::new(2, 11), ($SafeWidth - 39))
+        $this.EqBadgeLabel.SetLayout([ATCoordinates]::new(2, ($SafeWidth - 27)), 13)
+        $this.StatusBadgeLabel.SetLayout([ATCoordinates]::new(2, ($SafeWidth - 13)), 9)
+        $this.Spinner.SetCoordinates([ATCoordinates]::new(2, ($SafeWidth - 2)))
+        $this.TimePrefixLabel.SetLayout([ATCoordinates]::new(3, 3), 0)
+
+        [Int]$ScrubberWidth = [Math]::Max(12, ($SafeWidth - 28))
+
+        $this.Scrubber.SetLayout([ATCoordinates]::new(3, 11), $ScrubberWidth)
+
+        $this.PrevButton.SetCoordinates([ATCoordinates]::new(4, 3))
+        $this.PlayPauseButton.SetCoordinates([ATCoordinates]::new(4, 10))
+        $this.StopButton.SetCoordinates([ATCoordinates]::new(4, 21))
+        $this.NextButton.SetCoordinates([ATCoordinates]::new(4, 30))
+        $this.RepeatButton.SetCoordinates([ATCoordinates]::new(4, 37))
+        $this.ShuffleButton.SetCoordinates([ATCoordinates]::new(4, 49))
+
+        [Int]$VolBarWidth = ($SafeWidth -GE 92) ? 10 : 6
+        [Int]$VolCol      = [Math]::Max(61, ($SafeWidth - ($VolBarWidth + 11)))
+
+        $this.VolumeControl.SetLayout([ATCoordinates]::new(4, $VolCol), $VolBarWidth)
+        $this.SetAllElementsDirty()
+    }
+
     [Boolean]HandleZoneNavigationKey(
         [ConsoleKeyInfo]$KeyInfo,
         [Context]$Context

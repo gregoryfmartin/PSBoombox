@@ -71,6 +71,30 @@ Class UINoticeModal : UIPanel {
         $this.UiElementListing[3] = $this.OkButton
     }
 
+    [Void]Resize(
+        [Int]$LayoutWidth,
+        [Int]$LayoutHeight
+    ) {
+        [Int]$ModalWidth  = [Math]::Clamp(($LayoutWidth - 10), 56, 72)
+        [Int]$ModalHeight = 7
+        [Int]$TopRow      = [Math]::Max(3, [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2))
+        [Int]$LeftCol     = [Math]::Max(3, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
+
+        $this.SetBounds([ATCoordinates]::new($TopRow, $LeftCol), [ATCoordinates]::new(($TopRow + $ModalHeight), ($LeftCol + $ModalWidth)))
+
+        [Int]$InnerWidth = [Math]::Max(20, ($this.Width - 4))
+
+        For([Int]$Idx = 0; $Idx -LT 3; $Idx++) {
+            $this.MessageLabels[$Idx].SetLayout([ATCoordinates]::new(($TopRow + 2 + $Idx), ($LeftCol + 2)), $InnerWidth)
+        }
+
+        $this.OkButton.SetCoordinates([ATCoordinates]::new(($TopRow + 5), ($LeftCol + 2)))
+
+        $this.InteriorClearDirty = $true
+
+        $this.SetAllElementsDirty()
+    }
+
     [Void]Configure(
         [String]$Title,
         [String[]]$Lines,

@@ -150,6 +150,29 @@ Class UIList : UIBase {
     ) {
         $this.MaxDisplayWidth = [Math]::Max(0, $Width)
 
+        Foreach($Item in $this.Items) {
+            $Item.MaxDisplayWidth = $this.MaxDisplayWidth
+        }
+
+        $this.LayoutItems()
+
+        $this.ViewportBlankDirty = $true
+        $this.Dirty              = $true
+    }
+
+    [Void]SetLayout(
+        [ATCoordinates]$DrawCoordinates,
+        [Int]$VisibleItemCount,
+        [Int]$MaxDisplayWidth
+    ) {
+        $this.DrawCoordinates  = ($null -EQ $DrawCoordinates) ? [ATCoordinates]::new(1, 1) : $DrawCoordinates
+        $this.VisibleItemCount = ($VisibleItemCount -GT 0) ? $VisibleItemCount : [UIList]::DefaultVisibleItemCount
+        $this.MaxDisplayWidth  = [Math]::Max(0, $MaxDisplayWidth)
+
+        Foreach($Item in $this.Items) {
+            $Item.MaxDisplayWidth = $this.MaxDisplayWidth
+        }
+
         $this.LayoutItems()
 
         $this.ViewportBlankDirty = $true

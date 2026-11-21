@@ -47,6 +47,17 @@ Class UIStatusFooterPanel : UIPanel {
         $this.UiElementListing[1] = $this.HintLabel
     }
 
+    [Void]Resize(
+        [Int]$StartRow,
+        [Int]$LayoutWidth
+    ) {
+        $this.MaxTextWidth = [Math]::Max(20, ($LayoutWidth - 2))
+
+        $this.StatusLabel.SetLayout([ATCoordinates]::new($StartRow, 2), $this.MaxTextWidth)
+        $this.HintLabel.SetLayout([ATCoordinates]::new(($StartRow + 1), 2), $this.MaxTextWidth)
+        $this.SetAllElementsDirty()
+    }
+
     [Void]SetStatus(
         [String]$Message
     ) {

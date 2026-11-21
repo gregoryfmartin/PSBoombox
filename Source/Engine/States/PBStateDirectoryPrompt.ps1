@@ -26,6 +26,20 @@ Class PBStateDirectoryPrompt : SMState {
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
 
+            If($Core.IsSuspendedForResize -EQ $true) {
+                $Core.IsSuspendedForResize         = $false
+                $Core.PendingScreenClear           = $true
+                $Core.PathModal.InteriorClearDirty = $true
+
+                $Core.PlaybackPanel.SetAllElementsDirty()
+                $Core.DirectoryPanel.SetAllElementsDirty()
+                $Core.PlaylistPanel.SetAllElementsDirty()
+                $Core.FooterPanel.SetAllElementsDirty()
+                $Core.PathModal.SetAllElementsDirty()
+
+                Return
+            }
+
             $Core.PlaybackPanel.UnfocusAllElements($Context)
             $Core.DirectoryPanel.UnfocusAllElements($Context)
             $Core.PlaylistPanel.UnfocusAllElements($Context)
@@ -66,6 +80,15 @@ Class PBStateDirectoryPrompt : SMState {
             }.GetNewClosure()
 
             Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+
+            If($Core.PendingScreenClear -EQ $true) {
+                If([Console]::IsOutputRedirected -EQ $false) {
+                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                }
+
+                $Core.PendingScreenClear = $false
+            }
+
             $Core.PlaybackPanel.Draw()
             $Core.DirectoryPanel.Draw()
             $Core.PlaylistPanel.Draw()
@@ -85,6 +108,10 @@ Class PBStateDirectoryPrompt : SMState {
             Confirm-Context $Context
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
+
+            If($Core.IsSuspendedForResize -EQ $true) {
+                Return
+            }
 
             $Core.PathModal.UnfocusAllElements($Context)
             $Core.PathModal.Deactivate($Context)
@@ -146,6 +173,15 @@ Class PBStateDirectoryPrompt : SMState {
             }
 
             Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+
+            If($Core.PendingScreenClear -EQ $true) {
+                If([Console]::IsOutputRedirected -EQ $false) {
+                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                }
+
+                $Core.PendingScreenClear = $false
+            }
+
             $Core.PlaybackPanel.Draw()
             $Core.DirectoryPanel.Draw()
             $Core.PlaylistPanel.Draw()

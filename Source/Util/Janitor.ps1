@@ -51,6 +51,18 @@ Class Janitor {
         $this.CheckBufferHeight($ContextBroadcaster, $Bsd)
     }
 
+    [Boolean]IsViewportBelowMinimum(
+        [Int]$Width,
+        [Int]$Height,
+        [BufferSpecDefinition]$Bsd
+    ) {
+        If($null -EQ $Bsd) {
+            Return $false
+        }
+
+        Return (($Width -LT $Bsd.BufferMinWidth.Value) -OR ($Height -LT $Bsd.BufferMinHeight.Value))
+    }
+
     [Boolean]CheckPSEdition(
         [ContextBroadcaster]$ContextBroadcaster
     ) {

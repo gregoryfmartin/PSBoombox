@@ -18,18 +18,21 @@ Set-StrictMode -Version Latest
 
 Class UIPanel : UIContainer {
     [Int]$ActiveIndex
+    [Boolean]$InteriorClearDirty
     [Hashtable]$UiElementListing
 
     UIPanel() : base() {
-        $this.ActiveIndex      = 0
-        $this.UiElementListing = @{}
+        $this.ActiveIndex        = 0
+        $this.InteriorClearDirty = $false
+        $this.UiElementListing   = @{}
     }
 
     UIPanel(
         [Hashtable]$UiElementListing
     ) : base() {
-        $this.ActiveIndex      = 0
-        $this.UiElementListing = ($null -EQ $UiElementListing) ? @{} : $UiElementListing
+        $this.ActiveIndex        = 0
+        $this.InteriorClearDirty = $false
+        $this.UiElementListing   = ($null -EQ $UiElementListing) ? @{} : $UiElementListing
     }
 
     [List[Int]]GetSortedElementKeys() {
@@ -268,6 +271,12 @@ Class UIPanel : UIContainer {
     [Void]Draw() {
         If($this.Width -GE 1) {
             ([UIContainer]$this).Draw()
+        }
+
+        If($this.InteriorClearDirty -EQ $true) {
+            ([UIContainer]$this).ClearInterior()
+
+            $this.InteriorClearDirty = $false
         }
 
         Foreach($Key in $this.GetSortedElementKeys()) {

@@ -91,7 +91,13 @@ Class PBStateInit : SMState {
                 $Core.FooterPanel.SetStatus($Core.PendingStartupStatus)
             }
 
-            $Core.AppState.Trigger('Ready', $Context)
+            If($Core.IsBufferTooSmall -EQ $true) {
+                $Core.SuspendedStateName   = 'PBStateMainPlayer'
+                $Core.IsSuspendedForResize = $false
+                $Core.AppState.Trigger('BufferTooSmall', $Context)
+            } Else {
+                $Core.AppState.Trigger('Ready', $Context)
+            }
         }
     }
 }

@@ -150,11 +150,23 @@ Class UITrackProgressBar : UIBase {
         [Int]$SafeWidth = [Math]::Max(8, $BarWidth)
 
         If($this.BarWidth -NE $SafeWidth) {
-            $this.BarWidth             = $SafeWidth
-            $this.ProgressBar.BarWidth = $SafeWidth
+            $this.BarWidth                      = $SafeWidth
+            $this.ProgressBar.BarWidth          = $SafeWidth
+            $this.ProgressBar.MaxRenderedLength = 0
 
             $this.SyncRenderState()
         }
+    }
+
+    [Void]SetLayout(
+        [ATCoordinates]$DrawCoordinates,
+        [Int]$BarWidth
+    ) {
+        $this.DrawCoordinates = ($null -EQ $DrawCoordinates) ? [ATCoordinates]::new(1, 1) : $DrawCoordinates
+        $this.BarWidth        = [Math]::Max(8, $BarWidth)
+
+        $this.ProgressBar.SetLayout($this.DrawCoordinates, $this.BarWidth)
+        $this.SyncRenderState()
     }
 
     [Void]SyncRenderState() {

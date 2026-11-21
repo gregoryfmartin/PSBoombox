@@ -229,6 +229,15 @@ Class UITextInput : UIBase {
         $this.Dirty = $true
     }
 
+    [Void]SetLayout(
+        [ATCoordinates]$DrawCoordinates,
+        [Int]$VisibleWidth
+    ) {
+        $this.DrawCoordinates = ($null -EQ $DrawCoordinates) ? [ATCoordinates]::new(1, 1) : $DrawCoordinates
+
+        $this.SetVisibleWidth($VisibleWidth)
+    }
+
     [Void]SetText(
         [String]$NewText
     ) {

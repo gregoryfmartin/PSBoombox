@@ -24,6 +24,7 @@ Set-StrictMode -Version Latest
 Class AppCore {
     [Boolean]$IsRunning
     [Boolean]$IsHeadlessMode
+    [Boolean]$AltScreenActive
     [BufferSpecDefinition]$BufferSpec
     [ContextBroadcaster]$ContextBroadcaster
     [Janitor]$Janitor
@@ -40,6 +41,7 @@ Class AppCore {
     AppCore() {
         $this.IsRunning          = $true
         $this.IsHeadlessMode     = ([Console]::IsInputRedirected -EQ $true) -OR ([Console]::IsOutputRedirected -EQ $true)
+        $this.AltScreenActive    = $false
         $this.TargetFps          = 30
         $this.TargetFrameTime    = 1.0 / $this.TargetFps
         $this.HighResTimerActive = $false
@@ -55,6 +57,24 @@ Class AppCore {
     }
 
     [Void]InitializeStates() {}
+
+    [Void]BeforeStateUpdate(
+        [Context]$Context
+    ) {}
+
+    [Void]EnterAlternateScreen() {
+        If(($this.IsHeadlessMode -EQ $false) -AND ([Console]::IsOutputRedirected -EQ $false) -AND ($this.AltScreenActive -EQ $false)) {
+            Write-Host "$([ATControlSequences]::AltScreenEnter)$([ATControlSequences]::CursorHide)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+            $this.AltScreenActive = $true
+        }
+    }
+
+    [Void]ExitAlternateScreen() {
+        If(($this.AltScreenActive -EQ $true) -AND ([Console]::IsOutputRedirected -EQ $false)) {
+            Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::CursorShow)$([ATControlSequences]::AltScreenExit)" -NoNewline
+            $this.AltScreenActive = $false
+        }
+    }
 
     [Void]SetTargetFps(
         [Int]$Fps
@@ -96,6 +116,8 @@ Class AppCore {
             })
             $this.InputPowerShell.Runspace = $this.InputRunspace
             $null                          = $this.InputPowerShell.BeginInvoke()
+
+            $this.EnterAlternateScreen()
         }
 
         $this.InitializeStates()
@@ -119,12 +141,16 @@ Class AppCore {
             $KeysPressedThisFrame.Add($KeyInfo)
         }
 
+        [Context]$FrameContext = [Context]::new(@{
+            [SMState]::ContextDeltaTime   = $DeltaTime
+            [SMState]::ContextKeysPressed = $KeysPressedThisFrame
+            [SMState]::ContextBoomboxCore = $this
+        })
+
+        $this.BeforeStateUpdate($FrameContext)
+
         If($null -NE $this.AppState) {
-            $this.AppState.Update([Context]::new(@{
-                [SMState]::ContextDeltaTime   = $DeltaTime
-                [SMState]::ContextKeysPressed = $KeysPressedThisFrame
-                [SMState]::ContextBoomboxCore = $this
-            }))
+            $this.AppState.Update($FrameContext)
         }
     }
 
@@ -212,7 +238,9 @@ Class AppCore {
             $this.Sw.Stop()
         }
 
-        If([Console]::IsOutputRedirected -EQ $false) {
+        If($this.AltScreenActive -EQ $true) {
+            $this.ExitAlternateScreen()
+        } Elseif([Console]::IsOutputRedirected -EQ $false) {
             Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::CursorShow)" -NoNewline
         }
     }

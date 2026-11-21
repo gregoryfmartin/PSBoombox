@@ -28,9 +28,10 @@ Class PBStateShutdown : SMState {
 
             $Core.MediaPlayer.Dispose()
 
-            If([Console]::IsOutputRedirected -EQ $false) {
+            If($Core.AltScreenActive -EQ $true) {
+                $Core.ExitAlternateScreen()
+            } Elseif([Console]::IsOutputRedirected -EQ $false) {
                 Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::CursorShow)" -NoNewline
-                Clear-Host
             }
 
             $Core.IsRunning = $false

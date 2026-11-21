@@ -21,6 +21,14 @@ Class BoomboxCore : AppCore {
     [String]$InitialPlaylistPath
     [Int]$LayoutWidth
     [Int]$LayoutHeight
+    [Int]$LastViewportWidth
+    [Int]$LastViewportHeight
+    [Int]$SimulatedViewportWidth
+    [Int]$SimulatedViewportHeight
+    [Boolean]$IsBufferTooSmall
+    [Boolean]$IsSuspendedForResize
+    [Boolean]$PendingScreenClear
+    [String]$SuspendedStateName
     [MMDirectoryService]$DirectoryService
     [MMPlaylist]$Playlist
     [MMMediaPlayer]$MediaPlayer
@@ -63,32 +71,206 @@ Class BoomboxCore : AppCore {
         [String]$InitialPath,
         [String]$InitialPlaylistPath
     ) {
-        $this.InitialPath              = (($null -NE $InitialPath) -AND ($InitialPath.Length -GT 0)) ? $InitialPath : (Get-Location).Path
-        $this.InitialPlaylistPath      = ($null -EQ $InitialPlaylistPath) ? '' : $InitialPlaylistPath
+        $this.InitialPath                  = (($null -NE $InitialPath) -AND ($InitialPath.Length -GT 0)) ? $InitialPath : (Get-Location).Path
+        $this.InitialPlaylistPath          = ($null -EQ $InitialPlaylistPath) ? '' : $InitialPlaylistPath
+        $this.LastViewportWidth            = 0
+        $this.LastViewportHeight           = 0
+        $this.SimulatedViewportWidth       = 0
+        $this.SimulatedViewportHeight      = 0
+        $this.IsBufferTooSmall             = $false
+        $this.IsSuspendedForResize         = $false
+        $this.PendingScreenClear           = $false
+        $this.SuspendedStateName           = ''
         $this.DirectoryService             = [MMDirectoryService]::new()
         $this.Playlist                     = [MMPlaylist]::new()
         $this.EqualizerService             = [MMEqualizerService]::new()
         $this.MediaPlayer                  = [MMMediaPlayer]::new()
         $this.MediaPlayer.EqualizerService = $this.EqualizerService
         $this.ActiveFocusZone              = [BoomboxFocusZone]::DirectoryBrowser
-        $this.AutoFocusPlaylistOnStart = $false
-        $this.PendingStartupStatus     = 'Ready'
-        $this.PendingStartupError      = $false
+        $this.AutoFocusPlaylistOnStart     = $false
+        $this.PendingStartupStatus         = 'Ready'
+        $this.PendingStartupError          = $false
 
         $this.ComputeLayoutBounds()
         $this.InitializeUiComponents()
     }
 
-    [Void]ComputeLayoutBounds() {
-        If([Console]::IsOutputRedirected -EQ $false) {
-            $this.LayoutWidth  = [Math]::Clamp([Console]::WindowWidth, 80, 160)
-            $this.LayoutHeight = [Math]::Clamp([Console]::WindowHeight, 24, 50)
-        } Else {
-            $this.LayoutWidth  = 100
-            $this.LayoutHeight = 28
+    [Void]SetSimulatedViewport(
+        [Int]$Width,
+        [Int]$Height
+    ) {
+        $this.SimulatedViewportWidth  = $Width
+        $this.SimulatedViewportHeight = $Height
+    }
+
+    [Hashtable]GetViewportDimensions() {
+        If(($this.SimulatedViewportWidth -GT 0) -AND ($this.SimulatedViewportHeight -GT 0)) {
+            Return @{
+                Width  = $this.SimulatedViewportWidth
+                Height = $this.SimulatedViewportHeight
+            }
         }
 
+        If([Console]::IsOutputRedirected -EQ $false) {
+            Try {
+                [Int]$WinW = [Console]::WindowWidth
+                [Int]$WinH = [Console]::WindowHeight
+
+                If(($WinW -GT 0) -AND ($WinH -GT 0)) {
+                    Return @{
+                        Width  = $WinW
+                        Height = $WinH
+                    }
+                }
+            } Catch {
+                # FALL BACK TO LAST KNOWN VIEWPORT DIMENSIONS DURING LIVE RESIZE
+            }
+
+            If(($this.LastViewportWidth -GT 0) -AND ($this.LastViewportHeight -GT 0)) {
+                Return @{
+                    Width  = $this.LastViewportWidth
+                    Height = $this.LastViewportHeight
+                }
+            }
+        }
+
+        Return @{
+            Width  = 100
+            Height = 28
+        }
+    }
+
+    [Void]ComputeLayoutBounds() {
+        [Hashtable]$Dims         = $this.GetViewportDimensions()
+        $this.LastViewportWidth  = $Dims.Width
+        $this.LastViewportHeight = $Dims.Height
+        $this.IsBufferTooSmall   = $this.Janitor.IsViewportBelowMinimum($Dims.Width, $Dims.Height, $this.BufferSpec)
+        $this.LayoutWidth        = [Math]::Max($this.BufferSpec.BufferMinWidth.Value, $Dims.Width)
+        $this.LayoutHeight       = [Math]::Max($this.BufferSpec.BufferMinHeight.Value, $Dims.Height)
+
         [ATCoordinates]::SetBounds(($this.LayoutHeight + 4), ($this.LayoutWidth + 4))
+    }
+
+    [Void]ResizeUiComponents() {
+        [Int]$BottomTopRow  = 6
+        [Int]$BottomEndRow  = $this.LayoutHeight - 2
+        [Int]$LeftPaneWidth = [Int][Math]::Floor($this.LayoutWidth / 2)
+
+        $this.PlaybackPanel.Resize($this.LayoutWidth)
+        $this.DirectoryPanel.Resize($BottomTopRow, $BottomEndRow, 1, $LeftPaneWidth)
+        $this.PlaylistPanel.Resize($BottomTopRow, $BottomEndRow, ($LeftPaneWidth + 1), $this.LayoutWidth)
+        $this.PathModal.Resize($this.LayoutWidth, $this.LayoutHeight)
+        $this.EqualizerModal.Resize($this.LayoutWidth, $this.LayoutHeight)
+        $this.NoticeModal.Resize($this.LayoutWidth, $this.LayoutHeight)
+        $this.VisualizerCanvas.Initialize($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 2)), 1, 1)
+        $this.VisualizerTrackLabel.SetLayout([ATCoordinates]::new(($this.LayoutHeight - 1), 2), [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.VisualizerHintLabel.SetLayout([ATCoordinates]::new($this.LayoutHeight, 2), [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.FooterPanel.Resize(($this.LayoutHeight - 1), $this.LayoutWidth)
+        $this.SyncAllPanelsFromState()
+        $this.SyncVisualizerTrackLabel()
+    }
+
+    [Void]ApplyViewportLayout(
+        [Int]$Width,
+        [Int]$Height
+    ) {
+        $this.LastViewportWidth  = $Width
+        $this.LastViewportHeight = $Height
+        $this.LayoutWidth        = [Math]::Max($this.BufferSpec.BufferMinWidth.Value, $Width)
+        $this.LayoutHeight       = [Math]::Max($this.BufferSpec.BufferMinHeight.Value, $Height)
+
+        [ATCoordinates]::SetBounds(($this.LayoutHeight + 4), ($this.LayoutWidth + 4))
+        $this.ResizeUiComponents()
+
+        $this.PendingScreenClear = $true
+    }
+
+    [Void]BeforeStateUpdate(
+        [Context]$Context
+    ) {
+        $this.CheckAndHandleViewportResize($Context)
+    }
+
+    [Void]CheckAndHandleViewportResize(
+        [Context]$Context
+    ) {
+        If(($null -EQ $this.AppState) -OR ($this.AppState.CurrentState -EQ 'PBStateShutdown')) {
+            Return
+        }
+
+        [Hashtable]$Dims   = $this.GetViewportDimensions()
+        [Int]$CurW         = $Dims.Width
+        [Int]$CurH         = $Dims.Height
+        [Boolean]$TooSmall = $this.Janitor.IsViewportBelowMinimum($CurW, $CurH, $this.BufferSpec)
+
+        If($this.AppState.CurrentState -EQ 'PBStateInit') {
+            $this.LastViewportWidth  = $CurW
+            $this.LastViewportHeight = $CurH
+            $this.IsBufferTooSmall   = $TooSmall
+
+            If(($TooSmall -EQ $false) -AND (($CurW -NE $this.LayoutWidth) -OR ($CurH -NE $this.LayoutHeight))) {
+                $this.ApplyViewportLayout($CurW, $CurH)
+            }
+
+            Return
+        }
+
+        If($TooSmall -EQ $true) {
+            $this.LastViewportWidth  = $CurW
+            $this.LastViewportHeight = $CurH
+            $this.IsBufferTooSmall   = $true
+
+            If($this.AppState.CurrentState -NE 'PBStateBufferTooSmall') {
+                $this.SuspendedStateName   = $this.AppState.CurrentState
+                $this.IsSuspendedForResize = $true
+                $this.PendingScreenClear   = $true
+
+                $this.AppState.Trigger('BufferTooSmall', $Context)
+            }
+
+            Return
+        }
+
+        If($this.AppState.CurrentState -EQ 'PBStateBufferTooSmall') {
+            $this.IsBufferTooSmall = $false
+
+            $this.ApplyViewportLayout($CurW, $CurH)
+
+            [String]$TargetState = ($this.SuspendedStateName.Length -GT 0) ? $this.SuspendedStateName : 'PBStateMainPlayer'
+
+            If($TargetState -EQ 'PBStateVisualizer') {
+                If($this.MediaPlayer.IsStopped() -EQ $true) {
+                    $this.IsSuspendedForResize = $false
+
+                    $this.VisualizerTrackLabel.Deactivate($Context)
+                    $this.VisualizerHintLabel.Deactivate($Context)
+                    $this.FooterPanel.SetStatus('Playback stopped. Returned to Playlist Mode.')
+                    $this.AppState.Trigger('Resume_PBStateMainPlayer', $Context)
+
+                    Return
+                } Elseif($this.MediaPlayer.IsEqualizerBypassedForCurrentTrack() -EQ $true) {
+                    $this.IsSuspendedForResize = $false
+
+                    $this.VisualizerTrackLabel.Deactivate($Context)
+                    $this.VisualizerHintLabel.Deactivate($Context)
+                    $this.OpenMidiVisualizerNotice($Context, 'Resume_PBStateNoticeModal')
+
+                    Return
+                }
+            }
+
+            $this.AppState.Trigger("Resume_$($TargetState)", $Context)
+
+            Return
+        }
+
+        $this.LastViewportWidth  = $CurW
+        $this.LastViewportHeight = $CurH
+        $this.IsBufferTooSmall   = $false
+
+        If(($CurW -NE $this.LayoutWidth) -OR ($CurH -NE $this.LayoutHeight)) {
+            $this.ApplyViewportLayout($CurW, $CurH)
+        }
     }
 
     [Void]InitializeUiComponents() {
@@ -308,11 +490,13 @@ Class BoomboxCore : AppCore {
             [PBStateEqualizer]::new(),
             [PBStateNoticeModal]::new(),
             [PBStateVisualizer]::new(),
+            [PBStateBufferTooSmall]::new(),
             [PBStateShutdown]::new()
         ))
 
         $this.AppState.AddTransitions(@(
             [SMTransition]::new('PBStateInit', 'Ready', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateInit', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateInit', 'FatalError', 'PBStateShutdown'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenDirectoryPrompt', 'PBStateDirectoryPrompt'),
             [SMTransition]::new('PBStateDirectoryPrompt', 'CloseDirectoryPrompt', 'PBStateMainPlayer'),
@@ -326,7 +510,20 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStateVisualizer', 'CloseVisualizer', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateVisualizer', 'VisualizerToNoticeModal', 'PBStateNoticeModal'),
             [SMTransition]::new('PBStateVisualizer', 'Quit', 'PBStateShutdown'),
-            [SMTransition]::new('PBStateMainPlayer', 'Quit', 'PBStateShutdown')
+            [SMTransition]::new('PBStateMainPlayer', 'Quit', 'PBStateShutdown'),
+            [SMTransition]::new('PBStateMainPlayer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateDirectoryPrompt', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStatePlaylistSavePrompt', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateEqualizer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateNoticeModal', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateVisualizer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateMainPlayer', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateDirectoryPrompt', 'PBStateDirectoryPrompt'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStatePlaylistSavePrompt', 'PBStatePlaylistSavePrompt'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateEqualizer', 'PBStateEqualizer'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateNoticeModal', 'PBStateNoticeModal'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateVisualizer', 'PBStateVisualizer'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Quit', 'PBStateShutdown')
         ))
     }
 

@@ -126,6 +126,7 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirEngine)/States/PBStateEqualizer.ps1"
 . "$($Script:DirEngine)/States/PBStateNoticeModal.ps1"
 . "$($Script:DirEngine)/States/PBStateVisualizer.ps1"
+. "$($Script:DirEngine)/States/PBStateBufferTooSmall.ps1"
 . "$($Script:DirEngine)/States/PBStateShutdown.ps1"
 . "$($Script:DirEngine)/BoomboxCore.ps1"
 

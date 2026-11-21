@@ -27,6 +27,22 @@ Class PBStateEqualizer : SMState {
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
 
+            If($Core.IsSuspendedForResize -EQ $true) {
+                $Core.IsSuspendedForResize               = $false
+                $Core.PendingScreenClear                 = $true
+                $Core.EqualizerModal.InteriorClearDirty  = $true
+                $Core.EqualizerModal.NamingRowClearDirty = $true
+
+                $Core.PlaybackPanel.SetAllElementsDirty()
+                $Core.DirectoryPanel.SetAllElementsDirty()
+                $Core.PlaylistPanel.SetAllElementsDirty()
+                $Core.FooterPanel.SetAllElementsDirty()
+                $Core.EqualizerModal.SyncFromService($Core.EqualizerService)
+                $Core.EqualizerModal.SetAllElementsDirty()
+
+                Return
+            }
+
             $Core.PlaybackPanel.UnfocusAllElements($Context)
             $Core.DirectoryPanel.UnfocusAllElements($Context)
             $Core.PlaylistPanel.UnfocusAllElements($Context)
@@ -36,6 +52,15 @@ Class PBStateEqualizer : SMState {
             $Core.PlaylistPanel.Deactivate($Context)
 
             Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+
+            If($Core.PendingScreenClear -EQ $true) {
+                If([Console]::IsOutputRedirected -EQ $false) {
+                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                }
+
+                $Core.PendingScreenClear = $false
+            }
+
             $Core.PlaybackPanel.Draw()
             $Core.DirectoryPanel.Draw()
             $Core.PlaylistPanel.Draw()
@@ -59,6 +84,10 @@ Class PBStateEqualizer : SMState {
             Confirm-Context $Context
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
+
+            If($Core.IsSuspendedForResize -EQ $true) {
+                Return
+            }
 
             If($Core.EqualizerModal.IsNamingPreset -EQ $true) {
                 $Core.EqualizerModal.IsNamingPreset = $false
@@ -132,6 +161,15 @@ Class PBStateEqualizer : SMState {
             }
 
             Write-Host "$([ATControlSequences]::DrawOptimizeOn)" -NoNewline
+
+            If($Core.PendingScreenClear -EQ $true) {
+                If([Console]::IsOutputRedirected -EQ $false) {
+                    Write-Host "$([ATControlSequences]::ModifierReset)$([ATControlSequences]::ClearScreen)$([ATControlSequences]::CursorHome)" -NoNewline
+                }
+
+                $Core.PendingScreenClear = $false
+            }
+
             $Core.PlaybackPanel.Draw()
             $Core.DirectoryPanel.Draw()
             $Core.PlaylistPanel.Draw()

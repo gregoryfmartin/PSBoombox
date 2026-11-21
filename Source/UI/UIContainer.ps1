@@ -126,6 +126,17 @@ Class UIContainer : UIBase {
         $this.Height = $this.RightBottom.Row.Value - $this.LeftTop.Row.Value
     }
 
+    [Void]SetBounds(
+        [ATCoordinates]$LeftTop,
+        [ATCoordinates]$RightBottom
+    ) {
+        $this.LeftTop     = ($null -EQ $LeftTop) ? [ATCoordinatesNone]::new() : $LeftTop
+        $this.RightBottom = ($null -EQ $RightBottom) ? [ATCoordinatesNone]::new() : $RightBottom
+
+        $this.UpdateDimensions()
+        $this.SetAllDirty()
+    }
+
     [Void]SetupTitle(
         [String]$Title,
         [TrueColor]$Color

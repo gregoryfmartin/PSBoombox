@@ -43,6 +43,25 @@ Class UIPlaylistPanel : UIPanel {
         $this.UiElementListing[0] = $this.PlaylistList
     }
 
+    [Void]Resize(
+        [Int]$TopRow,
+        [Int]$BottomRow,
+        [Int]$LeftCol,
+        [Int]$RightCol
+    ) {
+        $this.SetBounds([ATCoordinates]::new($TopRow, $LeftCol), [ATCoordinates]::new($BottomRow, $RightCol))
+
+        [Int]$VisibleRows      = [Math]::Max(3, ($this.Height - 1))
+        $this.ListDisplayWidth = [Math]::Max(10, ($this.Width - 3))
+
+        $this.PlaylistList.SetLayout(
+            [ATCoordinates]::new(($TopRow + 1), ($LeftCol + 2)),
+            $VisibleRows,
+            $this.ListDisplayWidth
+        )
+        $this.SetAllElementsDirty()
+    }
+
     [Int]GetSelectedTrackIndex() {
         Return $this.PlaylistList.SelectedIndex
     }

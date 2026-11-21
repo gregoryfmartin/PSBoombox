@@ -149,6 +149,13 @@ Class UIButton : UIBase {
         })
     }
 
+    [Void]SetCoordinates(
+        [ATCoordinates]$DrawCoordinates
+    ) {
+        $this.DrawCoordinates = ($null -EQ $DrawCoordinates) ? [ATCoordinates]::new(1, 1) : $DrawCoordinates
+        $this.Dirty           = $true
+    }
+
     [Void]SetLabel(
         [String]$LabelText
     ) {

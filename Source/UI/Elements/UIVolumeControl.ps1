@@ -149,6 +149,18 @@ Class UIVolumeControl : UIBase {
         })
     }
 
+    [Void]SetLayout(
+        [ATCoordinates]$DrawCoordinates,
+        [Int]$BarWidth
+    ) {
+        [ATCoordinates]$SafeCoords = ($null -EQ $DrawCoordinates) ? [ATCoordinates]::new(1, 1) : $DrawCoordinates
+        [Int]$SafeBarWidth         = [Math]::Max(4, $BarWidth)
+        $this.DrawCoordinates      = $SafeCoords
+
+        $this.VolumeBar.SetLayout([ATCoordinates]::new($SafeCoords.Row.Value, ($SafeCoords.Column.Value + 4)), $SafeBarWidth)
+        $this.SyncRenderState()
+    }
+
     [Void]SetVolume(
         [Int]$Percent
     ) {

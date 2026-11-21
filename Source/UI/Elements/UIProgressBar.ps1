@@ -239,6 +239,16 @@ Class UIProgressBar : UIBase {
         }
     }
 
+    [Void]SetLayout(
+        [ATCoordinates]$DrawCoordinates,
+        [Int]$BarWidth
+    ) {
+        $this.DrawCoordinates   = ($null -EQ $DrawCoordinates) ? [ATCoordinates]::new(1, 1) : $DrawCoordinates
+        $this.BarWidth          = [Math]::Max(1, $BarWidth)
+        $this.MaxRenderedLength = 0
+        $this.Dirty             = $true
+    }
+
     [Void]SetCustomLabels(
         [String]$PrefixText,
         [String]$SuffixText

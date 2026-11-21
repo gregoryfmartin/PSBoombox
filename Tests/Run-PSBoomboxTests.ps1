@@ -886,6 +886,192 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
         }
     }
+
+    & $InvokeCase -Name 'Dynamic Viewport Resizing, Uncapped Full-Buffer Layout, and Buffer-Too-Small Warning Mode' -Body {
+        [String]$TempDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_ResizeTest_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $TempDir -ItemType Directory -Force
+
+        Try {
+            [String]$LongTrackName = 'VeryLongOrchestralSymphonyTrack_' + ('Z' * 90) + '.wav'
+            [String]$WavFile       = Join-Path $TempDir $LongTrackName
+            New-TestWavFile -FilePath $WavFile -DurationMs 2500
+
+            # 1. UNCAPPED LARGE VIEWPORT (240x70) CONSUMES FULL BUFFER
+            [BoomboxCore]$Core = [BoomboxCore]::new($TempDir, '')
+            $Core.SetSimulatedViewport(240, 70)
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Large viewport Init transitions to MainPlayer'
+            Assert-Equal $Core.LayoutWidth 240 'LayoutWidth must expand uncapped to 240'
+            Assert-Equal $Core.LayoutHeight 70 'LayoutHeight must expand uncapped to 70'
+            Assert-True ([ATCoordinates]::MaxColumn -GE 244) 'ATCoordinates MaxColumn must expand for 240-col viewport'
+            Assert-True ([ATCoordinates]::MaxRow -GE 74) 'ATCoordinates MaxRow must expand for 70-row viewport'
+            Assert-Equal $Core.PlaybackPanel.RightBottom.Column.Value 240 'PlaybackPanel must span full 240 width'
+            Assert-Equal $Core.DirectoryPanel.RightBottom.Column.Value 120 'DirectoryPanel must occupy left 120 cols'
+            Assert-Equal $Core.PlaylistPanel.LeftTop.Column.Value 121 'PlaylistPanel must start at col 121'
+            Assert-Equal $Core.PlaylistPanel.RightBottom.Column.Value 240 'PlaylistPanel must end at col 240'
+            Assert-Equal $Core.DirectoryPanel.RightBottom.Row.Value 68 'DirectoryPanel must end at row 68'
+            Assert-Equal $Core.FooterPanel.StatusLabel.DrawCoordinates.Row.Value 69 'Footer StatusLabel must sit at row 69'
+            Assert-Equal $Core.FooterPanel.HintLabel.DrawCoordinates.Row.Value 70 'Footer HintLabel must sit at row 70'
+            Assert-Equal $Core.VisualizerCanvas.Width 240 'VisualizerCanvas must expand uncapped to 240 width'
+            Assert-Equal $Core.VisualizerCanvas.Height 68 'VisualizerCanvas must expand to 68 rows'
+            Assert-True ($Core.PathModal.Width -LE 78) 'PathModal width remains capped <= 78'
+            Assert-True ($Core.EqualizerModal.Width -LE 78) 'EqualizerModal width remains capped <= 78'
+            Assert-True ($Core.NoticeModal.Width -LE 72) 'NoticeModal width remains capped <= 72'
+            Assert-Equal $Core.PathModal.LeftTop.Column.Value ([Int][Math]::Floor((240 - $Core.PathModal.Width) / 2)) 'PathModal centered horizontally at 240 cols'
+
+            # 2. SHRINK TO 80x24 THEN RE-EXPAND TO 180x50
+            $Core.PlayTrack([MMTrackInfo]::new($WavFile))
+            $Core.SetSimulatedViewport(80, 24)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.LayoutWidth 80 'Shrink to 80 width updates LayoutWidth'
+            Assert-Equal $Core.LayoutHeight 24 'Shrink to 24 height updates LayoutHeight'
+            Assert-Equal $Core.PlaybackPanel.Scrubber.BarWidth 52 'Scrubber bar shrinks to 52 at 80 cols'
+            Assert-Equal $Core.PlaybackPanel.Scrubber.ProgressBar.MaxRenderedLength 66 'ProgressBar MaxRenderedLength resets on shrink and recomputes to 66'
+            Assert-Equal $Core.PlaybackPanel.VolumeControl.VolumeBar.MaxRenderedLength 13 'VolumeBar MaxRenderedLength resets on shrink and recomputes to 13'
+            Assert-True ($Core.PlaybackPanel.TrackValueLabel.UserData.Contains('...')) 'Long track title truncates at 80 cols'
+
+            $Core.SetSimulatedViewport(180, 50)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.LayoutWidth 180 'Re-expand to 180 updates LayoutWidth'
+            Assert-Equal $Core.LayoutHeight 50 'Re-expand to 50 updates LayoutHeight'
+            Assert-False ($Core.PlaybackPanel.TrackValueLabel.UserData.Contains('...')) 'Long track title un-truncates from RawText when widened to 180 cols'
+            Assert-True ($Core.DirectoryPanel.DirectoryList.VisibleItemCount -GT 20) 'DirectoryList visible row count grows on 50-row terminal'
+            Assert-True ($Core.PathModal.InteriorClearDirty -EQ $true) 'Modal InteriorClearDirty marked on resize'
+
+            # 3. WARNING MODE FROM DIRECTORY PROMPT PRESERVING UNSAVED INPUT
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'g', [ConsoleKey]::G, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateDirectoryPrompt' 'Entered DirectoryPrompt'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'x', [ConsoleKey]::X, $false, $false, $false))
+            $Core.Logic(0.033)
+            [String]$TypedPath = $Core.PathModal.PathInput.Text
+            Assert-True ($TypedPath.EndsWith('x')) 'Typed character recorded in PathInput'
+
+            $Core.SetSimulatedViewport(79, 24)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' '79x24 enters PBStateBufferTooSmall'
+            Assert-Equal $Core.PathModal.PathInput.Text $TypedPath 'Typed PathInput preserved while suspended in Warning Mode'
+
+            $Core.SetSimulatedViewport(130, 36)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateDirectoryPrompt' 'Restoring 130x36 resumes PBStateDirectoryPrompt'
+            Assert-Equal $Core.PathModal.PathInput.Text $TypedPath 'Typed PathInput intact after resume'
+            Assert-Equal $Core.PathModal.LeftTop.Column.Value ([Int][Math]::Floor((130 - $Core.PathModal.Width) / 2)) 'PathModal re-centered at 130 cols'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Escape exits DirectoryPrompt back to MainPlayer'
+
+            # 4. WARNING MODE FROM EQUALIZER PRESERVING INLINE PRESET NAMING
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateEqualizer' 'Entered Equalizer modal'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'s', [ConsoleKey]::S, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'R', [ConsoleKey]::R, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'s', [ConsoleKey]::S, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True $Core.EqualizerModal.IsNamingPreset 'Equalizer entered inline naming mode'
+            [String]$ExpectedPresetInput = $Core.EqualizerModal.PresetNameInput.Text
+            Assert-True ($ExpectedPresetInput.EndsWith('Res')) 'Inline preset naming captured typed suffix'
+
+            $Core.SetSimulatedViewport(80, 23)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' '80x23 enters PBStateBufferTooSmall'
+
+            $Core.SetSimulatedViewport(110, 32)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateEqualizer' 'Restoring 110x32 resumes PBStateEqualizer'
+            Assert-True $Core.EqualizerModal.IsNamingPreset 'Inline preset naming mode preserved across Warning Mode'
+            Assert-Equal $Core.EqualizerModal.PresetNameInput.Text $ExpectedPresetInput 'Inline preset text preserved across Warning Mode'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Returned from Equalizer to MainPlayer'
+
+            # 5. UNIMPEDED GLOBAL PLAYBACK & VISUALIZER SUSPEND/RESUME IN WARNING MODE
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'Entered Visualizer Mode'
+            Assert-Equal $Core.TargetFps 60 'Visualizer Mode runs at 60 FPS'
+
+            [Int]$StartVol = $Core.MediaPlayer.Volume.Value
+            $Core.SetSimulatedViewport(50, 15)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' '50x15 enters PBStateBufferTooSmall from Visualizer'
+            Assert-Equal $Core.TargetFps 30 'Warning Mode restores 30 FPS'
+            Assert-True ($Core.MediaPlayer.IsPlaying()) 'Audio continues playing inside Warning Mode'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'+', [ConsoleKey]::Add, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'m', [ConsoleKey]::M, $false, $false, $false))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]' ', [ConsoleKey]::Spacebar, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.MediaPlayer.Volume.Value ([Math]::Min(100, $StartVol + 5)) 'Volume +5% works inside Warning Mode'
+            Assert-True $Core.MediaPlayer.IsMuted 'Mute toggle works inside Warning Mode'
+            Assert-True ($Core.MediaPlayer.IsPaused()) 'Space pauses playback inside Warning Mode'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]' ', [ConsoleKey]::Spacebar, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True ($Core.MediaPlayer.IsPlaying()) 'Space resumes playback inside Warning Mode'
+
+            $Core.SetSimulatedViewport(160, 44)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'Restoring 160x44 resumes PBStateVisualizer'
+            Assert-Equal $Core.TargetFps 60 'Visualizer TargetFps restored to 60 on resume'
+            Assert-Equal $Core.VisualizerCanvas.Width 160 'VisualizerCanvas resized to 160 on resume'
+            Assert-Equal $Core.VisualizerCanvas.Height 42 'VisualizerCanvas resized to 42 on resume'
+
+            $Core.SetSimulatedViewport(45, 12)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' 'Re-entered Warning Mode'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'s', [ConsoleKey]::S, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True ($Core.MediaPlayer.IsStopped()) 'Stop works inside Warning Mode'
+
+            $Core.SetSimulatedViewport(100, 30)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Stopping inside Visualizer suspend resumes safely to MainPlayer'
+
+            # 6. WARNING RENDERER TIERS & QUIT FROM WARNING MODE
+            [PBStateBufferTooSmall]$WarnState = $Core.AppState.States['PBStateBufferTooSmall'] -AS [PBStateBufferTooSmall]
+            [String]$Tier1Ansi = $WarnState.BuildWarningAnsi(60, 18, 80, 24)
+            [String]$Tier2Ansi = $WarnState.BuildWarningAnsi(20, 4, 80, 24)
+            [String]$Tier3Ansi = $WarnState.BuildWarningAnsi(8, 2, 80, 24)
+            [String]$Tiny1x1   = $WarnState.BuildWarningAnsi(1, 1, 80, 24)
+            Assert-True ($Tier1Ansi.Contains('Terminal Too Small')) 'Tier 1 warning renders boxed title'
+            Assert-True ($Tier2Ansi.Contains('Window Too Small')) 'Tier 2 warning renders compact message'
+            Assert-True ($Tier3Ansi.Length -GT 0) 'Tier 3 ultra-tiny warning renders safely'
+            Assert-Equal $Tiny1x1 '' '1x1 viewport emits no unsafe output'
+
+            $Core.SetSimulatedViewport(40, 10)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' 'Entered Warning Mode for Quit check'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'q', [ConsoleKey]::Q, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateShutdown' 'Q inside Warning Mode triggers Shutdown'
+            Assert-False $Core.IsRunning 'IsRunning is false after Quit from Warning Mode'
+            $Core.Cleanup()
+
+            # 7. STARTUP BELOW MINIMUM (60x20) ENTERS WARNING MODE DIRECTLY THEN RECOVERS
+            [BoomboxCore]$SmallStartCore = [BoomboxCore]::new($TempDir, '')
+            $SmallStartCore.SetSimulatedViewport(60, 20)
+            $SmallStartCore.InitializeStates()
+            $SmallStartCore.Logic(0.016)
+            Assert-Equal $SmallStartCore.AppState.CurrentState 'PBStateBufferTooSmall' 'Startup below 80x24 enters PBStateBufferTooSmall directly'
+
+            $SmallStartCore.SetSimulatedViewport(100, 30)
+            $SmallStartCore.Logic(0.033)
+            Assert-Equal $SmallStartCore.AppState.CurrentState 'PBStateMainPlayer' 'Growing startup viewport from 60x20 to 100x30 enters PBStateMainPlayer'
+            Assert-Equal $SmallStartCore.LayoutWidth 100 'Recovered LayoutWidth is 100'
+            Assert-Equal $SmallStartCore.LayoutHeight 30 'Recovered LayoutHeight is 30'
+            $SmallStartCore.Cleanup()
+        } Finally {
+            Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
+        }
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {

@@ -265,6 +265,68 @@ Class UIEqualizerModal : UIPanel {
         $this.UiElementListing[50] = $this.HintLabel
     }
 
+    [Void]Resize(
+        [Int]$LayoutWidth,
+        [Int]$LayoutHeight
+    ) {
+        [Int]$ModalWidth  = [Math]::Clamp(($LayoutWidth - 2), 76, 78)
+        [Int]$ModalHeight = 16
+        [Int]$TopRow      = [Math]::Max(3, [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2))
+        [Int]$LeftCol     = [Math]::Max(2, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
+
+        $this.SetBounds([ATCoordinates]::new($TopRow, $LeftCol), [ATCoordinates]::new(($TopRow + $ModalHeight), ($LeftCol + $ModalWidth)))
+
+        [Int]$InnerWidth   = [Math]::Max(20, ($this.Width - 4))
+        [Int]$ControlRow   = $TopRow + 1
+        [Int]$StatusRow    = $TopRow + 2
+        [Int]$DividerRow   = $TopRow + 3
+        [Int]$SliderTopRow = $TopRow + 4
+        [Int]$HintRow      = $TopRow + 15
+
+        $this.ToggleEqButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 2)))
+        $this.PresetButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 14)))
+        $this.SavePresetButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 37)))
+        $this.DeletePresetButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 46)))
+        $this.FlatButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 54)))
+        $this.CloseButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 63)))
+        $this.StatusLineLabel.SetLayout([ATCoordinates]::new($StatusRow, ($LeftCol + 2)), $InnerWidth)
+
+        [String]$RuleText = ([String][Char]0x2500) * ($this.Width - 1)
+
+        $this.DividerRuleLabel.SetText($RuleText)
+        $this.DividerRuleLabel.SetLayout([ATCoordinates]::new($DividerRow, ($LeftCol + 1)), ($this.Width - 1))
+
+        $this.SavePromptLabel.SetLayout([ATCoordinates]::new($StatusRow, ($LeftCol + 2)), 12)
+        $this.PresetNameInput.SetLayout([ATCoordinates]::new($StatusRow, ($LeftCol + 15)), 28)
+        $this.ConfirmSaveButton.SetCoordinates([ATCoordinates]::new($StatusRow, ($LeftCol + 48)))
+        $this.CancelSaveButton.SetCoordinates([ATCoordinates]::new($StatusRow, ($LeftCol + 55)))
+
+        ($this.UiElementListing[30] -AS [UILabel]).SetLayout([ATCoordinates]::new(($SliderTopRow + 1), ($LeftCol + 2)), 3)
+        ($this.UiElementListing[31] -AS [UILabel]).SetLayout([ATCoordinates]::new(($SliderTopRow + 3), ($LeftCol + 2)), 3)
+        ($this.UiElementListing[32] -AS [UILabel]).SetLayout([ATCoordinates]::new(($SliderTopRow + 5), ($LeftCol + 2)), 3)
+        ($this.UiElementListing[33] -AS [UILabel]).SetLayout([ATCoordinates]::new(($SliderTopRow + 7), ($LeftCol + 2)), 3)
+        ($this.UiElementListing[34] -AS [UILabel]).SetLayout([ATCoordinates]::new(($SliderTopRow + 9), ($LeftCol + 2)), 3)
+
+        For([Int]$DivIdx = 0; $DivIdx -LT 11; $DivIdx++) {
+            ($this.UiElementListing[(35 + $DivIdx)] -AS [UILabel]).SetLayout([ATCoordinates]::new(($SliderTopRow + $DivIdx), ($LeftCol + 12)), 1)
+        }
+
+        $this.PreampSlider.SetCoordinates([ATCoordinates]::new($SliderTopRow, ($LeftCol + 6)))
+
+        For([Int]$BIdx = 0; $BIdx -LT [MMEqualizerService]::BandCount; $BIdx++) {
+            [Int]$BandCol = $LeftCol + 14 + ($BIdx * 6)
+
+            $this.BandSliders[$BIdx].SetCoordinates([ATCoordinates]::new($SliderTopRow, $BandCol))
+        }
+
+        $this.HintLabel.SetLayout([ATCoordinates]::new($HintRow, ($LeftCol + 2)), $InnerWidth)
+
+        $this.InteriorClearDirty  = $true
+        $this.NamingRowClearDirty = $true
+
+        $this.SetAllElementsDirty()
+    }
+
     [String]FormatPresetButtonLabel(
         [String]$PresetName
     ) {
@@ -622,6 +684,12 @@ Class UIEqualizerModal : UIPanel {
     [Void]Draw() {
         If($this.Width -GE 1) {
             ([UIContainer]$this).Draw()
+        }
+
+        If($this.InteriorClearDirty -EQ $true) {
+            ([UIContainer]$this).ClearInterior()
+
+            $this.InteriorClearDirty = $false
         }
 
         If($this.NamingRowClearDirty -EQ $true) {
