@@ -14,7 +14,6 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 - 10-band equalizer with a few baked in presets and the ability to create your own.
 - A fancy little Visualizer Mode. Because what the hell.
 - Directory browsing with an in-memory playlist. Also supports saving and loading common playlist formats: M3U, M3U8, PLS, and WPL.
-- Full-screen Dark & Light color theming powered by embedded Gogh palettes (plus `PSBoombox Default` and custom Gogh JSON files via `-Theme`), complete with a live-preview tabbed Theme Selector (`T`).
 - Responsive layout. Will resize with the buffer window/pane. If the buffer drops below certain dimensions, you'll be smacked in your face.
 - Dark and light color themes for your eyelids to enjoy.
 
