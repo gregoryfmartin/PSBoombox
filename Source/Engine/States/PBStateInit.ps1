@@ -91,6 +91,7 @@ Class PBStateInit : SMState {
 
             $Core.EqualizerService.Load()
             $Core.MediaPlayer.ApplyEqualizerFromService()
+            $Core.NotificationService.Initialize($Core.IsHeadlessMode)
 
             $Core.DirectoryPanel.SyncFromService($Core.DirectoryService, '')
             $Core.PlaylistPanel.SyncFromPlaylist($Core.Playlist, 0)

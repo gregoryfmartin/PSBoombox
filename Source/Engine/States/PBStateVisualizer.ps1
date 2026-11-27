@@ -192,6 +192,12 @@ Class PBStateVisualizer : SMState {
 
                         Continue
                     }
+
+                    If($KeyInfo.Key -EQ [ConsoleKey]::B) {
+                        $Core.ToggleNotifications()
+
+                        Continue
+                    }
                 }
             }
 

@@ -174,6 +174,12 @@ Class PBStateMainPlayer : SMState {
                         Continue
                     }
 
+                    If($KeyInfo.Key -EQ [ConsoleKey]::B) {
+                        $Core.ToggleNotifications()
+
+                        Continue
+                    }
+
                     If($KeyInfo.Key -EQ [ConsoleKey]::Spacebar) {
                         [UIBase]$FocusedControl = $Core.PlaybackPanel.GetFocusedElement()
 

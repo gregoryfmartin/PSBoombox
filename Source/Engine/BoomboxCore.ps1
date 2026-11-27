@@ -34,6 +34,7 @@ Class BoomboxCore : AppCore {
     [MMPlaylist]$Playlist
     [MMMediaPlayer]$MediaPlayer
     [MMEqualizerService]$EqualizerService
+    [MMNotificationService]$NotificationService
     [UIThemeService]$ThemeService
     [UIPlaybackControlPanel]$PlaybackPanel
     [UIDirectoryBrowserPanel]$DirectoryPanel
@@ -97,6 +98,7 @@ Class BoomboxCore : AppCore {
         $this.DirectoryService             = [MMDirectoryService]::new()
         $this.Playlist                     = [MMPlaylist]::new()
         $this.EqualizerService             = [MMEqualizerService]::new()
+        $this.NotificationService          = [MMNotificationService]::new()
         $this.ThemeService                 = [UIThemeService]::new()
         $this.MediaPlayer                  = [MMMediaPlayer]::new()
         $this.MediaPlayer.EqualizerService = $this.EqualizerService
@@ -309,7 +311,7 @@ Class BoomboxCore : AppCore {
         $this.Visualizers.Add([UIVisualizerWaterfall]::new())
         $this.ActiveVisualizerIndex = 0
         $this.VisualizerTrackLabel  = [UILabel]::new('', [ATCoordinates]::new(($this.LayoutHeight - 1), 2), [ColorLibrary]::BoomboxVizTrackLabel, [Math]::Max(20, ($this.LayoutWidth - 2)))
-        $this.VisualizerHintLabel   = [UILabel]::new('[Tab] Next Viz [V] Exit [Spc] Play/Pause [N/P] Track [+/-] Vol [M] Mute', [ATCoordinates]::new($this.LayoutHeight, 2), [ColorLibrary]::BoomboxVizHint, [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.VisualizerHintLabel   = [UILabel]::new('[Tab] Next Viz [V] Exit [Spc] Play/Pause [N/P] Track [+/-] Vol [M] Mute [B] Toast', [ATCoordinates]::new($this.LayoutHeight, 2), [ColorLibrary]::BoomboxVizHint, [Math]::Max(20, ($this.LayoutWidth - 2)))
         $this.FooterPanel           = [UIStatusFooterPanel]::new(($this.LayoutHeight - 1), $this.LayoutWidth)
 
         [BoomboxCore]$SelfCore = $this
@@ -735,6 +737,7 @@ Class BoomboxCore : AppCore {
 
         If($this.MediaPlayer.LoadAndPlay($Track) -EQ $true) {
             $this.FooterPanel.SetStatus("Playing `"$($Track.DisplayName)`"")
+            $this.NotificationService.NotifyTrackChange($Track)
         }
 
         $this.SyncAllPanelsFromState()
@@ -782,6 +785,7 @@ Class BoomboxCore : AppCore {
 
     [Void]StopPlayback() {
         $this.MediaPlayer.Stop()
+        $this.NotificationService.DismissNotification()
         $this.FooterPanel.SetStatus('Playback stopped')
         $this.SyncAllPanelsFromState()
     }
@@ -870,6 +874,12 @@ Class BoomboxCore : AppCore {
 
         $this.PlaybackPanel.SyncFromPlayer($this.MediaPlayer, $this.Playlist)
         $this.FooterPanel.SetStatus(($Enabled -EQ $true) ? 'Shuffle: On' : 'Shuffle: Off')
+    }
+
+    [Void]ToggleNotifications() {
+        [Hashtable]$Result = $this.NotificationService.ToggleEnabled($this.GetCurrentPlayingPath())
+
+        $this.FooterPanel.SetStatus($Result.Message)
     }
 
     [Void]ToggleEqualizer() {
@@ -1096,6 +1106,7 @@ Class BoomboxCore : AppCore {
         If($this.Playlist.RemoveAt($Idx) -EQ $true) {
             If($WasPlaying -EQ $true) {
                 $this.MediaPlayer.Stop()
+                $this.NotificationService.DismissNotification()
             }
 
             [Int]$NextSelection = [Math]::Min($Idx, ($this.Playlist.Tracks.Count - 1))
@@ -1134,6 +1145,7 @@ Class BoomboxCore : AppCore {
 
     [Void]ClearPlaylist() {
         $this.MediaPlayer.Stop()
+        $this.NotificationService.DismissNotification()
         $this.Playlist.Clear()
         $this.PlaylistPanel.SyncFromPlaylist($this.Playlist, -1)
         $this.SyncAllPanelsFromState()
@@ -1208,6 +1220,10 @@ Class BoomboxCore : AppCore {
     }
 
     [Void]Cleanup() {
+        If($null -NE $this.NotificationService) {
+            $this.NotificationService.Dispose()
+        }
+
         If($null -NE $this.MediaPlayer) {
             $this.MediaPlayer.Dispose()
         }

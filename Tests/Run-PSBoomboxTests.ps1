@@ -1364,6 +1364,331 @@ If($null -NE $ModuleScope) {
             Remove-Item -Path $MediaTempDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+
+    & $InvokeCase -Name 'BurntToast Notification Service (Opt-In, Hotkey, Rules, and Dedicated Runspace)' -Body {
+        # 1. DEFAULT / UNAVAILABLE BEHAVIOR WHEN BURNTTOAST IS NOT LOADED
+        [MMNotificationService]$UnavailSvc = [MMNotificationService]::new()
+        $UnavailSvc.InitializeWithModulePath('', $false)
+        Assert-False $UnavailSvc.IsModuleLoaded 'Unavailable BurntToast must keep IsModuleLoaded false'
+        Assert-False $UnavailSvc.IsEnabled 'Notifications must start disabled'
+        Assert-True ($null -EQ $UnavailSvc.WorkerRunspace) 'No background runspace should be created when BurntToast is missing'
+
+        [Hashtable]$UnavailToggle = $UnavailSvc.ToggleEnabled('')
+        Assert-False $UnavailToggle.Changed 'Toggle must report Changed=false when BurntToast is missing'
+        Assert-False $UnavailToggle.Enabled 'Toggle must stay disabled when BurntToast is missing'
+        Assert-True ($UnavailToggle.Message.Contains('unavailable')) 'Unavailable toggle message mismatch'
+
+        $UnavailSvc.NotifyTrackChange([MMTrackInfo]::new('C:\Music\ignored.wav'))
+        $UnavailSvc.DismissNotification()
+        $UnavailSvc.Dispose()
+
+        # 2. DETERMINISTIC STATE RULES VIA DISPATCH OVERRIDE
+        [System.Collections.Generic.List[Hashtable]]$Events = [System.Collections.Generic.List[Hashtable]]::new()
+        [MMNotificationService]$RuleSvc                     = [MMNotificationService]::new()
+        $RuleSvc.DispatchOverride = {
+            Param(
+                [String]$Action,
+                [String]$TrackName,
+                [Hashtable]$Meta
+            )
+
+            $Events.Add(@{
+                Action    = $Action
+                TrackName = $TrackName
+                Meta      = $Meta
+            })
+        }.GetNewClosure()
+        $RuleSvc.InitializeWithModulePath('C:\Fake\BurntToast.psm1', $true)
+        Assert-True $RuleSvc.IsModuleLoaded 'Simulated BurntToast path must set IsModuleLoaded=true'
+        Assert-False $RuleSvc.IsEnabled 'Notifications must default to opt-in (disabled)'
+
+        [MMTrackInfo]$TrackA = [MMTrackInfo]::new('C:\Music\alpha.wav')
+        [MMTrackInfo]$TrackB = [MMTrackInfo]::new('C:\Music\beta.wav')
+
+        # DISABLED -> NO TOAST
+        $RuleSvc.NotifyTrackChange($TrackA)
+        Assert-Equal $Events.Count 0 'Opt-in off must not dispatch notifications'
+
+        # TOGGLE ON WHILE TRACK A IS PLAYING -> NO TOAST FOR TOGGLE ITSELF, REPEAT SUPPRESSED
+        [Hashtable]$OnRes = $RuleSvc.ToggleEnabled($TrackA.FullPath)
+        Assert-True $OnRes.Changed 'Toggle on must succeed'
+        Assert-True $OnRes.Enabled 'Toggle on must enable notifications'
+        Assert-Equal $Events.Count 0 'Toggling on must not fire an immediate toast'
+
+        $RuleSvc.NotifyTrackChange($TrackA)
+        Assert-Equal $Events.Count 0 'Re-notifying already-playing Track A must be suppressed'
+
+        # TRACK A -> TRACK B FIRES NOTIFY WITH EXPECTED PAYLOAD
+        $RuleSvc.NotifyTrackChange($TrackB)
+        Assert-Equal $Events.Count 1 'Changing to Track B must dispatch 1 Notify'
+        Assert-Equal $Events[0].Action 'Notify' 'First dispatched action must be Notify'
+        Assert-Equal $Events[0].Meta.Lines.Count 3 'Toast must have 3 lines'
+        Assert-Equal $Events[0].Meta.Lines[0] 'PSBoombox' 'Toast line 1 must be PSBoombox'
+        Assert-Equal $Events[0].Meta.Lines[1] 'Now Playing' 'Toast line 2 must be Now Playing'
+        Assert-Equal $Events[0].Meta.Lines[2] 'beta.wav' 'Toast line 3 must be track name'
+        Assert-True $Events[0].Meta.Silent 'Toast must use -Silent'
+        Assert-Equal $Events[0].Meta.UniqueIdentifier 'PSBoombox_NowPlaying' 'Toast must use fixed UniqueIdentifier'
+        Assert-True ($Events[0].Meta.IconPath.Replace('\', '/').EndsWith('/Assets/BTIcon.png')) 'DefaultIconPath must point to Assets/BTIcon.png'
+
+        # REPEAT-ONE / RE-SELECTION OF TRACK B SUPPRESSED
+        $RuleSvc.NotifyTrackChange($TrackB)
+        Assert-Equal $Events.Count 1 'Repeat-One or re-selecting Track B must be suppressed'
+
+        # DISMISS CLEARS LAST TRACK SO STARTING TRACK B FROM STOPPED FIRES AGAIN
+        $RuleSvc.DismissNotification()
+        Assert-Equal $Events.Count 2 'DismissNotification must dispatch Dismiss'
+        Assert-Equal $Events[1].Action 'Dismiss' 'Second action must be Dismiss'
+
+        $RuleSvc.NotifyTrackChange($TrackB)
+        Assert-Equal $Events.Count 3 'Starting Track B from Stopped state must trigger Notify'
+        Assert-Equal $Events[2].Action 'Notify' 'Third action must be Notify'
+
+        # TOGGLE OFF DISMISSES AND SUPPRESSES FUTURE NOTIFICATIONS
+        [Hashtable]$OffRes = $RuleSvc.ToggleEnabled($TrackB.FullPath)
+        Assert-True $OffRes.Changed 'Toggle off must succeed'
+        Assert-False $OffRes.Enabled 'Toggle off must disable notifications'
+        Assert-Equal $Events.Count 4 'Toggle off must dispatch Dismiss'
+        Assert-Equal $Events[3].Action 'Dismiss' 'Fourth action must be Dismiss'
+
+        $RuleSvc.NotifyTrackChange($TrackA)
+        Assert-Equal $Events.Count 4 'Disabled service must suppress track changes'
+
+        $RuleSvc.Dispose()
+        Assert-Equal $Events.Count 5 'Dispose must dispatch Dispose'
+        Assert-Equal $Events[4].Action 'Dispose' 'Fifth action must be Dispose'
+        Assert-True $RuleSvc.IsDisposed 'Service must be marked disposed'
+
+        # 3. BOOMBOXCORE INTEGRATION (B HOTKEY, PLAY/PAUSE, STOP, CLEAR, MODE SWITCH, VISUALIZER)
+        [String]$CoreMediaDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_BtCore_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $CoreMediaDir -ItemType Directory -Force
+
+        Try {
+            New-TestWavFile -FilePath (Join-Path $CoreMediaDir 'song_one.wav') -DurationMs 1500
+            New-TestWavFile -FilePath (Join-Path $CoreMediaDir 'song_two.wav') -DurationMs 1500
+
+            [BoomboxCore]$Core = [BoomboxCore]::new($CoreMediaDir, '')
+            [System.Collections.Generic.List[Hashtable]]$CoreEvents = [System.Collections.Generic.List[Hashtable]]::new()
+            $Core.NotificationService.DispatchOverride = {
+                Param(
+                    [String]$Action,
+                    [String]$TrackName,
+                    [Hashtable]$Meta
+                )
+
+                $CoreEvents.Add(@{
+                    Action    = $Action
+                    TrackName = $TrackName
+                    Meta      = $Meta
+                })
+            }.GetNewClosure()
+
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Core must reach PBStateMainPlayer'
+            $Core.NotificationService.IsModuleLoaded = $true
+
+            # TOGGLE ON VIA B HOTKEY
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'b', [ConsoleKey]::B, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True $Core.NotificationService.IsEnabled 'Pressing B must enable notifications'
+            Assert-True ($Core.FooterPanel.StatusLabel.UserData.Contains('BurntToast notifications: On')) 'Footer must show notifications enabled'
+            Assert-Equal $CoreEvents.Count 0 'Toggling B on must not emit a toast'
+
+            # START PLAYBACK FROM STOPPED -> NOTIFY SONG ONE
+            $Core.PlayTrack($Core.Playlist.SelectIndex(0))
+            Assert-Equal $CoreEvents.Count 1 'Starting song_one must notify'
+            Assert-Equal $CoreEvents[0].TrackName 'song_one.wav' 'First track name mismatch'
+
+            # RE-SELECT SAME TRACK -> SUPPRESSED
+            $Core.PlayTrack($Core.Playlist.GetCurrentTrack())
+            Assert-Equal $CoreEvents.Count 1 'Re-playing current track must be suppressed'
+
+            # PAUSE / RESUME -> NO TOAST OR DISMISS
+            $Core.TogglePlayPause()
+            Assert-True ($Core.MediaPlayer.IsPaused()) 'Track should be paused'
+            $Core.TogglePlayPause()
+            Assert-True ($Core.MediaPlayer.IsPlaying()) 'Track should be resumed'
+            Assert-Equal $CoreEvents.Count 1 'Pause/Resume must not trigger notifications'
+
+            # MODE CHANGE (EQUALIZER MODAL OPEN/CLOSE) -> NO TOAST OR DISMISS
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateEqualizer' 'E opens Equalizer'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Escape closes Equalizer'
+            Assert-Equal $CoreEvents.Count 1 'Mode transitions must not trigger notifications'
+
+            # NEXT TRACK VIA N -> NOTIFY SONG TWO
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'n', [ConsoleKey]::N, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $CoreEvents.Count 2 'Skipping to song_two must notify'
+            Assert-Equal $CoreEvents[1].Action 'Notify' 'Next track must emit Notify'
+            Assert-Equal $CoreEvents[1].TrackName 'song_two.wav' 'Second track name mismatch'
+
+            # ENTER VISUALIZER AND TOGGLE B OFF THEN ON
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'V enters Visualizer'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'b', [ConsoleKey]::B, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-False $Core.NotificationService.IsEnabled 'Pressing B in Visualizer must toggle notifications off'
+            Assert-Equal $CoreEvents.Count 3 'Toggling off in Visualizer must dismiss'
+            Assert-Equal $CoreEvents[2].Action 'Dismiss' 'Expected Dismiss on toggle off'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'b', [ConsoleKey]::B, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True $Core.NotificationService.IsEnabled 'Pressing B in Visualizer must toggle notifications back on'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'V returns to MainPlayer'
+
+            # STOP PLAYBACK -> DISMISS, THEN PLAY FROM STOPPED -> NOTIFY AGAIN
+            $Core.StopPlayback()
+            Assert-Equal $CoreEvents.Count 4 'StopPlayback must emit Dismiss'
+            Assert-Equal $CoreEvents[3].Action 'Dismiss' 'Expected Dismiss on stop'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]' ', [ConsoleKey]::Spacebar, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $CoreEvents.Count 5 'Starting from stopped via Spacebar must notify'
+            Assert-Equal $CoreEvents[4].Action 'Notify' 'Expected Notify when starting from stopped'
+
+            # CLEAR PLAYLIST -> DISMISS
+            $Core.ClearPlaylist()
+            Assert-Equal $CoreEvents.Count 6 'ClearPlaylist must emit Dismiss'
+            Assert-Equal $CoreEvents[5].Action 'Dismiss' 'Expected Dismiss on playlist clear'
+
+            $Core.Cleanup()
+            Assert-Equal $CoreEvents.Count 7 'Cleanup must dispose NotificationService'
+            Assert-Equal $CoreEvents[6].Action 'Dispose' 'Expected Dispose on cleanup'
+        } Finally {
+            Remove-Item -Path $CoreMediaDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # 4. REAL DEDICATED BACKGROUND RUNSPACE END-TO-END TEST WITH MOCK BURNTTOAST MODULE
+        [String]$MockRoot     = Join-Path ([Path]::GetTempPath()) "PSBoombox_BtRunspace_$([Guid]::NewGuid().ToString('N'))"
+        [String]$MockModDir   = Join-Path $MockRoot 'BurntToast'
+        [String]$MockModPath  = Join-Path $MockModDir 'BurntToast.psm1'
+        [String]$MockLogPath  = Join-Path $MockRoot 'bt_calls.jsonl'
+        [String]$MockIconPath = Join-Path $MockRoot 'BTIcon.png'
+        $null = New-Item -Path $MockModDir -ItemType Directory -Force
+        [File]::WriteAllBytes($MockIconPath, [Byte[]]@(0x89, 0x50, 0x4E, 0x47))
+
+        [String]$MockModuleCode = @"
+`$Script:BtLogPath = '$($MockLogPath.Replace("'", "''"))'
+
+Function New-BurntToastNotification {
+    Param(
+        [String[]]`$Text,
+        [Switch]`$Silent,
+        [String]`$UniqueIdentifier,
+        [String]`$AppLogo
+    )
+
+    `$Entry = @{
+        Command          = 'New-BurntToastNotification'
+        Text             = `$Text
+        Silent           = `$Silent.IsPresent
+        UniqueIdentifier = `$UniqueIdentifier
+        AppLogo          = `$AppLogo
+    } | ConvertTo-Json -Compress
+
+    [System.IO.File]::AppendAllText(`$Script:BtLogPath, "`$(`$Entry)`n")
+}
+
+Function Remove-BTNotification {
+    Param(
+        [String]`$UniqueIdentifier
+    )
+
+    `$Entry = @{
+        Command          = 'Remove-BTNotification'
+        UniqueIdentifier = `$UniqueIdentifier
+    } | ConvertTo-Json -Compress
+
+    [System.IO.File]::AppendAllText(`$Script:BtLogPath, "`$(`$Entry)`n")
+}
+
+Export-ModuleMember -Function 'New-BurntToastNotification', 'Remove-BTNotification'
+"@
+        [File]::WriteAllText($MockModPath, $MockModuleCode)
+
+        [MMNotificationService]$AsyncSvc = [MMNotificationService]::new()
+
+        Try {
+            $AsyncSvc.IconPath   = $MockIconPath
+            $AsyncSvc.DebounceMs = 80
+            $AsyncSvc.InitializeWithModulePath($MockModPath, $false)
+
+            Assert-True ($null -NE $AsyncSvc.WorkerRunspace) 'Up-front dedicated background runspace must be created'
+
+            # WAIT UP TO 3S FOR UP-FRONT WORKER MODULE IMPORT
+            [System.Diagnostics.Stopwatch]$Sw = [System.Diagnostics.Stopwatch]::StartNew()
+            While(($AsyncSvc.SharedState['WorkerReady'] -NE $true) -AND ($AsyncSvc.SharedState['WorkerFailed'] -NE $true) -AND ($Sw.ElapsedMilliseconds -LT 3000)) {
+                [System.Threading.Thread]::Sleep(15)
+            }
+            Assert-True ([Boolean]$AsyncSvc.SharedState['WorkerReady']) 'Dedicated background runspace must import BurntToast cleanly'
+
+            $null = $AsyncSvc.ToggleEnabled('')
+
+            # RAPID-SKIP 4 TRACKS -> LATEST-WINS DEBOUNCE MUST ONLY EMIT TRACK 4
+            $AsyncSvc.NotifyTrackChange([MMTrackInfo]::new('C:\Music\Track1.wav'))
+            $AsyncSvc.NotifyTrackChange([MMTrackInfo]::new('C:\Music\Track2.wav'))
+            $AsyncSvc.NotifyTrackChange([MMTrackInfo]::new('C:\Music\Track3.wav'))
+            $AsyncSvc.NotifyTrackChange([MMTrackInfo]::new('C:\Music\Track4.wav'))
+
+            $Sw.Restart()
+            While((([File]::Exists($MockLogPath) -EQ $false) -OR ([File]::ReadAllLines($MockLogPath).Length -LT 1)) -AND ($Sw.ElapsedMilliseconds -LT 2500)) {
+                [System.Threading.Thread]::Sleep(20)
+            }
+            [System.Threading.Thread]::Sleep(150)
+
+            Assert-True ([File]::Exists($MockLogPath)) 'Mock BurntToast log must exist after debounce'
+            [String[]]$Lines1 = [File]::ReadAllLines($MockLogPath)
+            Assert-Equal $Lines1.Length 1 'Rapid-skipping 4 tracks must coalesce into exactly 1 toast notification'
+
+            $NotifyObj = $Lines1[0] | ConvertFrom-Json
+            Assert-Equal $NotifyObj.Command 'New-BurntToastNotification' 'Expected New-BurntToastNotification call'
+            Assert-Equal $NotifyObj.Text.Count 3 'Async toast must have 3 lines'
+            Assert-Equal $NotifyObj.Text[0] 'PSBoombox' 'Async toast line 1 mismatch'
+            Assert-Equal $NotifyObj.Text[1] 'Now Playing' 'Async toast line 2 must be Now Playing'
+            Assert-Equal $NotifyObj.Text[2] 'Track4.wav' 'Async toast line 3 must reflect latest-wins Track4.wav'
+            Assert-True ([Boolean]$NotifyObj.Silent) 'Async toast must pass -Silent'
+            Assert-Equal $NotifyObj.UniqueIdentifier 'PSBoombox_NowPlaying' 'Async toast must pass -UniqueIdentifier'
+            Assert-Equal $NotifyObj.AppLogo $MockIconPath 'Async toast must pass -AppLogo when icon exists'
+
+            # EXPLICIT DISMISS -> REMOVE-BTNOTIFICATION
+            $AsyncSvc.DismissNotification()
+            $Sw.Restart()
+            While(([File]::ReadAllLines($MockLogPath).Length -LT 2) -AND ($Sw.ElapsedMilliseconds -LT 2000)) {
+                [System.Threading.Thread]::Sleep(20)
+            }
+
+            [String[]]$Lines2 = [File]::ReadAllLines($MockLogPath)
+            Assert-Equal $Lines2.Length 2 'DismissNotification must invoke Remove-BTNotification'
+            $DismissObj = $Lines2[1] | ConvertFrom-Json
+            Assert-Equal $DismissObj.Command 'Remove-BTNotification' 'Expected Remove-BTNotification call on dismiss'
+            Assert-Equal $DismissObj.UniqueIdentifier 'PSBoombox_NowPlaying' 'Dismiss must pass UniqueIdentifier'
+
+            # DISPATCH ANOTHER TOAST, THEN VERIFY DISPOSE (QUIT) EXPLICITLY REMOVES IT
+            $AsyncSvc.NotifyTrackChange([MMTrackInfo]::new('C:\Music\Track1.wav'))
+            $Sw.Restart()
+            While(([File]::ReadAllLines($MockLogPath).Length -LT 3) -AND ($Sw.ElapsedMilliseconds -LT 2500)) {
+                [System.Threading.Thread]::Sleep(20)
+            }
+
+            $AsyncSvc.Dispose()
+            Assert-True ($null -EQ $AsyncSvc.WorkerRunspace) 'Dispose must clean up WorkerRunspace'
+
+            [String[]]$Lines3 = [File]::ReadAllLines($MockLogPath)
+            Assert-Equal $Lines3.Length 4 'Dispose with active toast must invoke Remove-BTNotification'
+            $ShutdownObj = $Lines3[3] | ConvertFrom-Json
+            Assert-Equal $ShutdownObj.Command 'Remove-BTNotification' 'Expected Remove-BTNotification on Dispose'
+            Assert-Equal $ShutdownObj.UniqueIdentifier 'PSBoombox_NowPlaying' 'Shutdown dismiss must pass UniqueIdentifier'
+        } Finally {
+            $AsyncSvc.Dispose()
+            Remove-Item -Path $MockRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
         } Finally {
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             [UIThemeService]::ConfigDirectoryOverride     = ''

@@ -80,6 +80,8 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirMedia)/MMPlaylist.ps1"
 . "$($Script:DirMedia)/MMPlaylistFileService.ps1"
 . "$($Script:DirMedia)/MMMediaPlayer.ps1"
+. "$($Script:DirMedia)/MMNotificationService.ps1"
+[MMNotificationService]::DefaultIconPath = "$($PSScriptRoot)/Assets/BTIcon.png"
 
 # LOAD UI FRAMEWORK, ELEMENTS, AND PANELS
 . "$($Script:DirUi)/UIElementBehavior.ps1"

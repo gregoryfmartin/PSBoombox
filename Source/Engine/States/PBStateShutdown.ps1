@@ -26,6 +26,7 @@ Class PBStateShutdown : SMState {
 
             [AppCore]$Core = $Context.References[[SMState]::ContextBoomboxCore]
 
+            $Core.NotificationService.Dispose()
             $Core.MediaPlayer.Dispose()
 
             If($Core.AltScreenActive -EQ $true) {

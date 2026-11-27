@@ -1,6 +1,18 @@
 # PSBoombox
 
-![Banner Image](Docs/Screenshots/PSBoomboxThing.jpg)
+<p align="center">
+  <img src="Docs/Screenshots/PSBoomboxIcon512.png" />
+</p>
+
+Norman Osborne has ~~officially~~ endorsed PSBoombox.
+
+<p align="center">
+  <img src="Docs/Screenshots/PSBoomboxThing.jpg" />
+</p>
+
+---
+
+## WTH
 
 PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](https://terminaltrove.com/moc/), [CMUS](https://cmus.github.io/), and Winamp (because we still gotta whip that llama's azz).
 
@@ -10,13 +22,13 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 
 ## Features
 
-- Plays audio files. Woooooo. Currently supports MP3, WAV, WMA, FLAC, M4A, AAC, MKA, and WEBA.
+- Plays audio files. Woooooo. Supported formats listed below.
 - 10-band equalizer with a few baked in presets and the ability to create your own.
 - A fancy little Visualizer Mode. Because what the hell.
-- Directory browsing with an in-memory playlist. Also supports saving and loading common playlist formats: M3U, M3U8, PLS, and WPL.
-- Full-screen Dark & Light color theming powered by embedded Gogh palettes (plus `PSBoombox Default` and custom Gogh JSON files via `-Theme`), complete with a live-preview tabbed Theme Selector (`T`).
+- Directory browsing with an in-memory playlist. Also supports common playlist formats (listed below).
 - Responsive layout. Will resize with the buffer window/pane. If the buffer drops below certain dimensions, you'll be smacked in your face.
 - Dark and light color themes for your eyelids to enjoy.
+- Optional [Burnt Toast](https://github.com/Windos/BurntToast) integration for "Now Playing" updates.
 
 ---
 
@@ -25,9 +37,9 @@ PSBoombox will let you boom that box, all in the terminal. Inspired by [MOC](htt
 | Requirement | Specification |
 | --- | --- |
 | **Operating System** | **Windows 10 / Windows 11** - Plans to look at Mac and Linux are forthcoming. |
-| **PowerShell** | **PowerShell Core 7.0+** Windows PowerShell 5.1 is not supported and likely won't be. |
-| **Terminal Emulator** | VT/ANSI terminal with **24-bit TrueColor**, **Unicode** glyph support, and synchronized rendering (**Windows Terminal** with `Cascadia Mono` or `Consolas` recommended). |
-| **Terminal Size** | Minimum **80 × 24** cells. Layout scales. |
+| **PowerShell** | **PowerShell Core 7.0+** Windows PowerShell 5.1 is not supported and likely won't be due to impending deprecation by Microsoft. |
+| **Terminal Emulator** | VT/ANSI terminal with **24-bit TrueColor** and **Unicode** glyph support. Tested with `Cascadia Code` and `Consolas` fonts. RMV with other fonts; I can't test everything. |
+| **Terminal Size** | Minimum **80 × 24** cells. Layout scales with your buffer size. |
 | **Audio Output** | Speakers. Your mouth isn't acceptable. |
 | **Dependencies** | A computer, fingers to type with, brains, ears to listen to the music with (you can borrow your friend's if yours are missing). |
 
@@ -41,10 +53,20 @@ PSBoombox is available on the PowerShell Gallery.
 Install-Module PSBoombox
 ```
 
+If you want to take advantage of the _optional_ Burnt Toast notification feature, you'll need to also install the Burnt Toast module (PSBoombox doesn't do this for you):
+
+```powershell
+Install-Module BurntToast
+```
+
 Once installed, you import it, then run the `Start-PSBoombox` cmdlet:
 
 ```powershell
 Import-Module PSBoombox
+
+# IF USING THE BURNT TOAST NOTIFICATION FEATURE: Import-Module BurntToast
+# YOU COULD ONE-LINE THIS: Import-Module BurntToast, PSBoombox
+
 Start-PSBoombox
 ```
 
@@ -52,39 +74,32 @@ Start-PSBoombox
 
 ## Invocation
 
-`PSBoombox` exports a single public cmdlet: `Start-PSBoombox`.
+Starting PSBoombox is really simple: `Start-PSBoombox`. There are several options you can apply to modify the startup behavior:
 
-### Parameters
+### Options
 
-| Parameter | Type | Default | Description |
+| Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `-Path` | `[String]` | Current Working Directory | Optional starting directory displayed in the Directory Browser pane (relative or rooted paths supported). If omitted, PSBoombox will use the current directory you started it from. |
 | `-Playlist` | `[String]` | Empty (`''`) | Optional path to a `.m3u`, `.m3u8`, `.pls`, or `.wpl` playlist file to load on startup. If omitted, PSBoombox will use a default, empty, in-memory playlist. |
 | `-Theme` | `[String]` | Persisted / `'PSBoombox Default'` | Optional built-in theme name (e.g. `'Catppuccin Latte'`, `'Dracula'`, `'Nord'`) or path to a custom Gogh-format `.json` color scheme file. |
 
-### Startup Behavior
-
-- **`Start-PSBoombox`** *(no arguments)*: Opens the Directory Browser in the current working directory, starts with an empty playlist, and automatically appends any supported audio files located in it.
-- **`Start-PSBoombox -Path 'C:\Music'`**: Starts the Directory Browser in `C:\Music` and auto-populates the playlist with any supported audio files found there.
-- **`Start-PSBoombox -Playlist '.\Favorites.m3u8'`**: Loads tracks from the specified playlist file on startup (bypassing CWD auto-population) and focuses the Playlist pane automatically when tracks are loaded.
-- **`Start-PSBoombox -Theme 'Catppuccin Latte'`**: Launches PSBoombox with the specified built-in Gogh preset or custom Gogh `.json` theme file.
-
 ### Examples
 
 ```powershell
-# Start in the current working directory (auto-adds any media files in CWD)
+# START IN THE CURRENT WORKING DIRECTORY (AUTO-ADDS ANY MEDIA FILES IN CWD)
 Start-PSBoombox
 
-# Start in a specific music folder
+# START IN A SPECIFIC MUSIC FOLDER
 Start-PSBoombox -Path 'D:\Audio\GoodShit'
 
-# Start with a saved playlist loaded
+# START WITH A SAVED PLAYLIST LOADED
 Start-PSBoombox -Playlist '.\Playlists\PissMyNeighborsOffWithThis.m3u8'
 
-# Browse one folder while pre-loading a playlist from elsewhere
+# BROWSE ONE FOLDER WHILE PRE-LOADING A PLAYLIST FROM ELSEWHERE
 Start-PSBoombox -Path 'D:\Audio' -Playlist 'D:\Playlists\Favorites.pls'
 
-# Launch with a built-in Light theme or custom Gogh JSON file
+# LAUNCH WITH A BUILT-IN LIGHT THEME OR CUSTOM GOGH JSON FILE
 Start-PSBoombox -Theme 'Catppuccin Latte'
 Start-PSBoombox -Theme '.\my-custom-gogh-theme.json'
 ```
@@ -122,7 +137,7 @@ Start-PSBoombox -Theme '.\my-custom-gogh-theme.json'
 
 The TUI divides the terminal into four coordinated regions plus centered modal overlays:
 
-1. **Playback Controls (Top Panel, Rows 1–5)**: Displays the active track title, compact equalizer badge (`[EQ:Off]`, `[EQ:<Preset>]`, or `[EQ:MIDI]`), state badge (`[STOPPED]`, `[LOADING]`, `[PLAYING]`, `[PAUSED]`, `[ERROR]`), animated braille activity indicator, seekable track progress bar (`MM:SS`), transport buttons (`|<`, `> Play`/`|| Pse`, `Stop`, `>|`, `Rpt:Off|All|One`, `Shf:Off|On`), and volume/mute indicator (`VOL`/`MUT`).
+1. **Playback Controls (Top Panel, Rows 1–5)**: Displays the active track title, compact equalizer badge (`[EQ:Off]` or `[EQ:<Preset>]`), state badge (`[STOPPED]`, `[LOADING]`, `[PLAYING]`, `[PAUSED]`, `[ERROR]`), animated braille activity indicator, seekable track progress bar (`MM:SS`), transport buttons (`|<`, `> Play`/`|| Pse`, `Stop`, `>|`, `Rpt:Off|All|One`, `Shf:Off|On`), and volume/mute indicator (`VOL`/`MUT`).
 2. **Directory Browser (Bottom-Left Panel)**: Shows the current path and media file count in the title bar (`Dir: <path> (<count>)`), color-coded by entry type:
    - `.. (Parent Directory)` *(orange)*
    - `[DIR] <Folder>` *(cyan)*
@@ -225,6 +240,56 @@ Press `T` from the main screen to open the tabbed **Themes** selector modal, org
 
 ---
 
+## Burnt Toast Notifications
+
+PSBoombox offers optional [Burnt Toast](https://github.com/Windos/BurntToast) notification support. Because it's _optional_, PSBoombox will not _require_ that you install Burnt Toast. If you want to take advantage of it, you'll need to install the module from the PowerShell Gallery yourself and import Burnt Toast into your session _before_ launching PSBoombox.
+
+```powershell
+# INSTALL BURNT TOAST
+Install-Module BurntToast
+
+# ONCE BURNT TOAST IS INSTALLED, IMPORT IT INTO YOUR CURRENT SESSION
+Import-Module BurntToast
+
+# THEN YOU CAN IMPORT/RUN PSBOOMBOX
+Import-Module PSBoombox; Start-PSBoombox
+
+# A ONE-LINER
+Install-Module BurntToast; Import-Module BurntToast, PSBoombox; Start-PSBoombox
+```
+
+In PSBoombox, you can toggle the notification feature with the `B` key. It's always **off** by default, so you'll need to turn it on.
+
+![PSBoombox BT Turn On](Docs/Screenshots/PSBoomboxBT0003.png)
+
+If the Burnt Toast module isn't available in your current session, you'll get a warning instead:
+
+![PSBoombox BT Unavailable](Docs/Screenshots/PSBoomboxBT0005.png)
+
+You also use the `B` key to toggle the feature **off**:
+
+![PSBoombox BT Turn Off](Docs/Screenshots/PSBoomboxBT0004.png)
+
+With the feature turned **on**, a notification will appear in the Notification Center **only when a song starts:**
+
+![PSBoombox BT Notification Sample A](Docs/Screenshots/PSBoomboxBT0001.png)
+
+Windows will tuck this notification into the Notification Center:
+
+![PSBoombox BT Notification Sample B](Docs/Screenshots/PSBoomboxBT0002.png)
+
+A few notes on Burnt Toast functionality:
+
+- PSBoombox only uses a single notification source, so multiple notifications won't spam for each song play. It just updates the one.
+- Spamming skip will not spawn multiple notifications, nor will it constantly update the single one. PSBoombox will wait a bit before updating the notification.
+- Once you close PSBoombox, it'll clean up the notification from the Notification Center so you don't have to go close it yourself.
+
+### Technical Note on Burnt Toast
+
+Burnt Toast has been marked as archived by the original author. PSBoombox has been tested and works against the 1.1.0 version. If a new maintainer takes over the project, PSBoombox will be tested against future versions since it's a weak dependency.
+
+---
+
 ## Keyboard Shortcuts
 
 ### Global Shortcuts (Main Screen)
@@ -245,6 +310,7 @@ Press `T` from the main screen to open the tabbed **Themes** selector modal, org
 | `G` / `F2` | Open **Go to Directory** modal |
 | `W` | Open **Save Playlist** modal |
 | `Q` / `Esc` | Quit PSBoombox cleanly |
+| `B` | Enable the optional Burnt Toast notification feature. |
 
 ### Directory Browser (`Tab` → Left Pane)
 
