@@ -14,7 +14,7 @@ Set-StrictMode -Version Latest
 # MM EQUALIZER SERVICE
 #
 # MANAGES 10-BAND ISO EQUALIZER STATE, 9 BAKED-IN PRESETS, USER CUSTOM
-# PRESETS, AND JSON PERSISTENCE IN %APPDATA%\PSBOOMBOX\EQUALIZER.JSON.
+# PRESETS, AND JSON PERSISTENCE IN %APPDATA%\PSBOOMBOX\CONFIG.JSON.
 #
 ###############################################################################
 
@@ -32,6 +32,7 @@ Class MMEqualizerService {
     [Int[]]$BandGainsDb
     [List[MMEqualizerPreset]]$BuiltInPresets
     [List[MMEqualizerPreset]]$UserPresets
+    [PBConfigService]$ConfigService
     [String]$ConfigDirectory
     [String]$ConfigFilePath
     [String]$LastError
@@ -47,18 +48,15 @@ Class MMEqualizerService {
         $this.Initialize($ConfigDirectory)
     }
 
+    MMEqualizerService(
+        [PBConfigService]$ConfigService
+    ) {
+        $this.InitializeWithConfig($ConfigService)
+    }
+
     [Void]Initialize(
         [String]$ConfigDirectory
     ) {
-        $this.Enabled            = $false
-        $this.ActivePresetName   = 'Flat'
-        $this.PreampDb           = 0
-        $this.BandGainsDb        = [Int[]]@(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-        $this.BuiltInPresets     = [List[MMEqualizerPreset]]::new()
-        $this.UserPresets        = [List[MMEqualizerPreset]]::new()
-        $this.LastError          = ''
-        $this.OnEqualizerChanged = $null
-
         [String]$TargetDir = $ConfigDirectory
 
         If(($null -EQ $TargetDir) -OR ($TargetDir.Trim().Length -EQ 0)) {
@@ -66,12 +64,30 @@ Class MMEqualizerService {
         }
 
         If(($null -EQ $TargetDir) -OR ($TargetDir.Trim().Length -EQ 0)) {
-            [String]$AppDataRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
-            $TargetDir           = [Path]::Combine($AppDataRoot, 'PSBoombox')
+            $TargetDir = [PBConfigService]::ConfigDirectoryOverride
         }
 
-        $this.ConfigDirectory = [Path]::GetFullPath($TargetDir)
-        $this.ConfigFilePath  = [Path]::Combine($this.ConfigDirectory, 'equalizer.json')
+        [PBConfigService]$LocalConfig = (($null -NE $TargetDir) -AND ($TargetDir.Trim().Length -GT 0)) ? [PBConfigService]::new($TargetDir) : [PBConfigService]::new()
+
+        $this.InitializeWithConfig($LocalConfig)
+    }
+
+    [Void]InitializeWithConfig(
+        [PBConfigService]$ConfigService
+    ) {
+        [PBConfigService]$ResolvedConfig = ($null -NE $ConfigService) ? $ConfigService : [PBConfigService]::new()
+
+        $this.Enabled            = $false
+        $this.ActivePresetName   = 'Flat'
+        $this.PreampDb           = 0
+        $this.BandGainsDb        = [Int[]]@(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        $this.BuiltInPresets     = [List[MMEqualizerPreset]]::new()
+        $this.UserPresets        = [List[MMEqualizerPreset]]::new()
+        $this.ConfigService      = $ResolvedConfig
+        $this.ConfigDirectory    = $ResolvedConfig.ConfigDirectory
+        $this.ConfigFilePath     = $ResolvedConfig.ConfigFilePath
+        $this.LastError          = ''
+        $this.OnEqualizerChanged = $null
 
         $this.PopulateBuiltInPresets()
     }
@@ -194,131 +210,76 @@ Class MMEqualizerService {
         $this.PreampDb         = 0
         $this.BandGainsDb      = [Int[]]@(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
-        If([File]::Exists($this.ConfigFilePath) -EQ $false) {
-            Return
+        If($this.ConfigService.IsLoaded -EQ $false) {
+            $this.ConfigService.Load()
         }
 
-        Try {
-            [String]$RawJson = [File]::ReadAllText($this.ConfigFilePath, [Encoding]::UTF8)
+        If($this.ConfigService.LastError.Length -GT 0) {
+            $this.LastError = $this.ConfigService.LastError
+        }
 
-            If($RawJson.Trim().Length -EQ 0) {
-                Return
-            }
-
-            [Object]$Parsed = $RawJson | ConvertFrom-Json -ErrorAction Stop
-
-            If($null -EQ $Parsed) {
-                Return
-            }
-
-            If(($null -NE $Parsed.PSObject.Properties['UserPresets']) -AND ($null -NE $Parsed.UserPresets)) {
-                Foreach($RawUser in $Parsed.UserPresets) {
-                    If(($null -EQ $RawUser) -OR ($null -EQ $RawUser.PSObject.Properties['Name'])) {
-                        Continue
-                    }
-
-                    [String]$UserName = [String]$RawUser.Name
-
-                    If(($UserName.Trim().Length -EQ 0) -OR ($this.IsBuiltInPresetName($UserName) -EQ $true)) {
-                        Continue
-                    }
-
-                    [Int]$UserPre     = ($null -NE $RawUser.PSObject.Properties['PreampDb']) ? [Int]$RawUser.PreampDb : 0
-                    [Int[]]$UserBands = [Int[]]::new([MMEqualizerService]::BandCount)
-
-                    If(($null -NE $RawUser.PSObject.Properties['Bands']) -AND ($null -NE $RawUser.Bands)) {
-                        For([Int]$BIdx = 0; $BIdx -LT [MMEqualizerService]::BandCount; $BIdx++) {
-                            If($BIdx -LT $RawUser.Bands.Count) {
-                                $UserBands[$BIdx] = [Int]$RawUser.Bands[$BIdx]
-                            }
-                        }
-                    }
-
-                    $this.UserPresets.Add([MMEqualizerPreset]::new($UserName, $UserPre, $UserBands, $false))
-                }
-            }
-
-            If($null -NE $Parsed.PSObject.Properties['Enabled']) {
-                $this.Enabled = [Boolean]$Parsed.Enabled
-            }
-
-            If($null -NE $Parsed.PSObject.Properties['PreampDb']) {
-                $this.PreampDb = [Math]::Clamp([Int]$Parsed.PreampDb, [MMEqualizerService]::MinGainDb, [MMEqualizerService]::MaxGainDb)
-            }
-
-            If(($null -NE $Parsed.PSObject.Properties['Bands']) -AND ($null -NE $Parsed.Bands)) {
-                [Int[]]$LoadedBands = [Int[]]::new([MMEqualizerService]::BandCount)
-
-                For([Int]$Idx = 0; $Idx -LT [MMEqualizerService]::BandCount; $Idx++) {
-                    If($Idx -LT $Parsed.Bands.Count) {
-                        $LoadedBands[$Idx] = [Int]$Parsed.Bands[$Idx]
-                    }
+        If($null -NE $this.ConfigService.EqualizerUserPresets) {
+            Foreach($RawUser in $this.ConfigService.EqualizerUserPresets) {
+                If($null -EQ $RawUser) {
+                    Continue
                 }
 
-                $this.BandGainsDb = [MMEqualizerPreset]::NormalizeBands($LoadedBands)
-            }
+                [String]$UserName = [String]$RawUser.Name
 
-            [String]$SavedPreset = ($null -NE $Parsed.PSObject.Properties['ActivePreset']) ? [String]$Parsed.ActivePreset : ''
-
-            If($SavedPreset.Trim().Length -GT 0) {
-                [MMEqualizerPreset]$Matched = $this.FindPreset($SavedPreset)
-
-                If($null -NE $Matched) {
-                    $this.ActivePresetName = $Matched.Name
-
-                    If(($null -EQ $Parsed.PSObject.Properties['Bands']) -OR ($null -EQ $Parsed.Bands)) {
-                        $this.PreampDb    = $Matched.PreampDb
-                        $this.BandGainsDb = [MMEqualizerPreset]::NormalizeBands($Matched.BandGainsDb)
-                    }
-                } Else {
-                    $this.ActivePresetName = [MMEqualizerService]::CustomPresetName
+                If(($UserName.Trim().Length -EQ 0) -OR ($this.IsBuiltInPresetName($UserName) -EQ $true)) {
+                    Continue
                 }
+
+                [Int]$UserPre     = [Int]$RawUser.PreampDb
+                [Int[]]$UserBands = [MMEqualizerPreset]::NormalizeBands([Int[]]$RawUser.Bands)
+
+                $this.UserPresets.Add([MMEqualizerPreset]::new($UserName, $UserPre, $UserBands, $false))
             }
-        } Catch {
-            $this.LastError        = "Failed to parse equalizer settings: $($_.Exception.Message)"
-            $this.Enabled          = $false
-            $this.ActivePresetName = 'Flat'
-            $this.PreampDb         = 0
-            $this.BandGainsDb      = [Int[]]@(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        }
+
+        $this.Enabled     = $this.ConfigService.EqualizerEnabled
+        $this.PreampDb    = [Math]::Clamp($this.ConfigService.EqualizerPreampDb, [MMEqualizerService]::MinGainDb, [MMEqualizerService]::MaxGainDb)
+        $this.BandGainsDb = [MMEqualizerPreset]::NormalizeBands($this.ConfigService.EqualizerBands)
+
+        [String]$SavedPreset = $this.ConfigService.EqualizerActivePreset
+
+        If($SavedPreset.Trim().Length -GT 0) {
+            [MMEqualizerPreset]$Matched = $this.FindPreset($SavedPreset)
+
+            If($null -NE $Matched) {
+                $this.ActivePresetName = $Matched.Name
+            } Else {
+                $this.ActivePresetName = [MMEqualizerService]::CustomPresetName
+            }
         }
     }
 
     [Boolean]Save() {
-        Try {
-            If([Directory]::Exists($this.ConfigDirectory) -EQ $false) {
-                $null = [Directory]::CreateDirectory($this.ConfigDirectory)
-            }
+        [List[Hashtable]]$UserList = [List[Hashtable]]::new()
 
-            [List[Hashtable]]$UserList = [List[Hashtable]]::new()
-
-            Foreach($UserPreset in $this.UserPresets) {
-                $UserList.Add(@{
-                    Name     = $UserPreset.Name
-                    PreampDb = $UserPreset.PreampDb
-                    Bands    = @($UserPreset.BandGainsDb)
-                })
-            }
-
-            [Hashtable]$Payload = @{
-                Version      = 1
-                Enabled      = $this.Enabled
-                ActivePreset = $this.ActivePresetName
-                PreampDb     = $this.PreampDb
-                Bands        = @($this.BandGainsDb)
-                UserPresets  = @($UserList)
-            }
-
-            [String]$JsonText        = $Payload | ConvertTo-Json -Depth 5
-            [UTF8Encoding]$Utf8NoBom = [UTF8Encoding]::new($false)
-
-            [File]::WriteAllText($this.ConfigFilePath, $JsonText, $Utf8NoBom)
-
-            Return $true
-        } Catch {
-            $this.LastError = "Failed to save equalizer settings: $($_.Exception.Message)"
-
-            Return $false
+        Foreach($UserPreset in $this.UserPresets) {
+            $UserList.Add(@{
+                Name     = $UserPreset.Name
+                PreampDb = $UserPreset.PreampDb
+                Bands    = @($UserPreset.BandGainsDb)
+            })
         }
+
+        $this.ConfigService.SetEqualizerSection(
+            $this.Enabled,
+            $this.ActivePresetName,
+            $this.PreampDb,
+            $this.BandGainsDb,
+            $UserList
+        )
+
+        [Boolean]$Saved = $this.ConfigService.Save()
+
+        If($Saved -EQ $false) {
+            $this.LastError = $this.ConfigService.LastError
+        }
+
+        Return $Saved
     }
 
     [Void]SetEnabled(

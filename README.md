@@ -201,10 +201,10 @@ Press `W` at any time on the main screen to open the **Save Playlist** modal:
 
 Press `E` from anywhere on the main screen to open the centered **Equalizer (10-Band ISO)** modal while audio continues playing smoothly:
 
-- **On/Off Toggle (`T` or `[ EQ: On/Off ]`)**: Enables or disables equalization in real time and immediately updates the top panel badge (`[EQ:<Preset>]` or `[EQ:Off]`). Your enabled/disabled state is persisted in `%APPDATA%\PSBoombox\equalizer.json` and restored automatically on the next launch.
+- **On/Off Toggle (`T` or `[ EQ: On/Off ]`)**: Enables or disables equalization in real time and immediately updates the top panel badge (`[EQ:<Preset>]` or `[EQ:Off]`). Your enabled/disabled state is persisted in `%APPDATA%\PSBoombox\config.json` and restored automatically on the next launch.
 - **Preamp & 10 ISO Bands (`Pre`, `31 Hz` – `16 kHz`)**: Use `Left` / `Right` to move across `Pre` and all 10 frequency bands, then adjust values from **`-12 dB` to `+12 dB` in `1 dB` steps** (`Up` / `Down`, `PageUp` / `PageDown` for ±3 dB, `Home` / `End` for ±12 dB, or `0` to zero the selected slider). All changes take effect live during playback and automatically switch the active profile to `Custom`.
 - **9 Baked-In Presets (`P` / `Shift+P` or `[ < Preset > ]`)**: Cycle through `Flat`, `Bass Boost`, `Rock`, `Pop`, `Jazz`, `Classical`, `Vocal`, `Electronic`, and `Treble Boost`, plus any saved user presets. Press `F` to quickly reset all bands back to `Flat`.
-- **Custom Named User Presets (`S` / `X`)**: Press `S` (or select `[ Save ]`) to name and store your current fader curve in `%APPDATA%\PSBoombox\equalizer.json`. All saved custom presets are automatically reloaded on startup alongside your active preset and On/Off setting. Press `X` (or select `[ Del ]`) to remove the active custom user preset.
+- **Custom Named User Presets (`S` / `X`)**: Press `S` (or select `[ Save ]`) to name and store your current fader curve in `%APPDATA%\PSBoombox\config.json`. All saved custom presets are automatically reloaded on startup alongside your active preset and On/Off setting. Press `X` (or select `[ Del ]`) to remove the active custom user preset.
 
 ---
 
@@ -225,7 +225,7 @@ Press `V` from the main Playlist Mode screen to enter full-screen **Visualizer M
   3. **Braille Oscilloscope** — High-resolution `2 × 4` Unicode Braille waveform plotter with bass-reactive gradients.
   4. **Radial Pulse** — Aspect-corrected concentric expanding rings and starburst field driven by live bass, mid, and treble energy.
   5. **Spectrogram Waterfall** — Scrolling time-frequency heat map rendered at 2× vertical resolution with paired half-blocks (`▀`).
-- **Controls & Auto-Return**: Global media controls (`Space`, `N`, `P`, `S`, `+`, `-`, `M`, `R`, `H`, `Q`) remain active while Equalizer/Modal prompts (`E`, `G`, `F2`, `W`) are disabled. Press `V` to return to Playlist Mode at any time, or stop playback (`S` / end of playlist) to return automatically.
+- **Controls & Auto-Return**: Global media controls (`Space`, `N`, `P`, `S`, `+`, `-`, `M`, `R`, `H`, `B`, `Q`) remain active while Equalizer/Modal prompts (`E`, `G`, `F2`, `W`) are disabled. Press `V` to return to Playlist Mode at any time, or stop playback (`S` / end of playlist) to return automatically.
 
 ---
 
@@ -235,7 +235,7 @@ Press `T` from the main screen to open the tabbed **Themes** selector modal, org
 
 - **Dark Tab (`11`)**: `PSBoombox Default`, `Catppuccin Mocha`, `Dracula`, `Gruvbox Dark`, `Nord`, `One Dark`, `Tokyo Night`, `Solarized Dark`, `Everforest Dark`, `Rose Pine`, `Monokai Dark`.
 - **Light Tab (`10`)**: `Catppuccin Latte`, `Gruvbox Light`, `Solarized Light`, `One Light`, `GitHub Light`, `Tokyo Night Light`, `Everforest Light`, `Rose Pine Dawn`, `Nord Light`, `Ayu Light`.
-- **Live Preview & Cancel Rollback**: Cycling through themes (`Up` / `Down`) or switching tabs (`Left` / `Right`) immediately re-themes the entire UI background, foreground, panels, modal swatches, and visualizer palettes. Press `Enter` (or select `[ Apply ]`) to commit and save your selection to `%APPDATA%\PSBoombox\theme.json`, or press `Esc` (or `[ Cancel ]`) to revert to your previous theme.
+- **Live Preview & Cancel Rollback**: Cycling through themes (`Up` / `Down`) or switching tabs (`Left` / `Right`) immediately re-themes the entire UI background, foreground, panels, modal swatches, and visualizer palettes. Press `Enter` (or select `[ Apply ]`) to commit and save your selection to `%APPDATA%\PSBoombox\config.json`, or press `Esc` (or `[ Cancel ]`) to revert to your previous theme.
 - **Custom Gogh JSON Themes**: Launch with `Start-PSBoombox -Theme '.\my-theme.json'` using any standard Gogh-format JSON file (`background`, `foreground`, `cursor`, `color_01`–`color_16`).
 
 ---
@@ -258,19 +258,26 @@ Import-Module PSBoombox; Start-PSBoombox
 Install-Module BurntToast; Import-Module BurntToast, PSBoombox; Start-PSBoombox
 ```
 
-In PSBoombox, you can toggle the notification feature with the `B` key. It's always **off** by default, so you'll need to turn it on.
+In PSBoombox, you can toggle the notification feature with the `B` key. It defaults to **off** on first launch, and once toggled, your preference is persisted in `%APPDATA%\PSBoombox\config.json` and restored automatically on future runs (provided `BurntToast` is imported in the session).
 
 ![PSBoombox BT Turn On](Docs/Screenshots/PSBoomboxBT0003.png)
 
-If the Burnt Toast module isn't available in your current session, you'll get a warning instead:
+If the Burnt Toast module isn't available in your current session when you press `B`, you'll get a status warning instead:
 
 ![PSBoombox BT Unavailable](Docs/Screenshots/PSBoomboxBT0005.png)
+
+If Burnt Toast notifications are enabled in `config.json`, but `BurntToast` was **not** imported before launching PSBoombox, a startup **BurntToast Not Loaded** notice modal is displayed:
+
+![PSBoombox BT Mismatch Notification](Docs/Screenshots/PSBoomboxBT0006.png)
+
+- Press `Q` to quit cleanly so you can import `BurntToast` and relaunch (keeping notifications enabled in `config.json`).
+- Press `Enter`, `Space`, or `Esc` to continue without notifications (which silently sets `BurntToastEnabled` back to `false` in `config.json`).
 
 You also use the `B` key to toggle the feature **off**:
 
 ![PSBoombox BT Turn Off](Docs/Screenshots/PSBoomboxBT0004.png)
 
-With the feature turned **on**, a notification will appear in the Notification Center **only when a song starts:**
+With the feature turned **on**, a notification will appear in the Notification Center **only when a song starts (or changes):**
 
 ![PSBoombox BT Notification Sample A](Docs/Screenshots/PSBoomboxBT0001.png)
 
@@ -282,11 +289,42 @@ A few notes on Burnt Toast functionality:
 
 - PSBoombox only uses a single notification source, so multiple notifications won't spam for each song play. It just updates the one.
 - Spamming skip will not spawn multiple notifications, nor will it constantly update the single one. PSBoombox will wait a bit before updating the notification.
-- Once you close PSBoombox, it'll clean up the notification from the Notification Center so you don't have to go close it yourself.
+- Stopping playback, clearing the playlist, or closing PSBoombox explicitly removes the active notification from the Notification Center so you don't have to go close it yourself.
 
 ### Technical Note on Burnt Toast
 
 Burnt Toast has been marked as archived by the original author. PSBoombox has been tested and works against the 1.1.0 version. If a new maintainer takes over the project, PSBoombox will be tested against future versions since it's a weak dependency.
+
+---
+
+## Configuration
+
+PSBoombox stores all persisted application settings in a single centralized file at `%APPDATA%\PSBoombox\config.json` (auto-created with default values on first launch if it does not already exist).
+
+The configuration is organized into grouped sections:
+
+```json
+{
+  "Version": 1,
+  "Theme": {
+    "ActiveTheme": "PSBoombox Default",
+    "CustomThemePath": ""
+  },
+  "Equalizer": {
+    "Enabled": false,
+    "ActivePreset": "Flat",
+    "PreampDb": 0,
+    "Bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "UserPresets": []
+  },
+  "Notifications": {
+    "BurntToastEnabled": false
+  }
+}
+```
+
+- **Legacy Migration *(Deprecated)*:** When launching without an existing `config.json`, PSBoombox automatically imports settings from any legacy `%APPDATA%\PSBoombox\theme.json` and `equalizer.json` files into `config.json` and removes the legacy files once migrated. This one-time migration path is deprecated and will be removed in a future release.
+- **Malformed JSON Resilience:** If `config.json` (or an individual section/field) contains invalid JSON or unexpected types after a manual edit, PSBoombox falls back to in-memory defaults for the affected values without blocking startup or overwriting the file on load.
 
 ---
 
@@ -310,7 +348,7 @@ Burnt Toast has been marked as archived by the original author. PSBoombox has be
 | `G` / `F2` | Open **Go to Directory** modal |
 | `W` | Open **Save Playlist** modal |
 | `Q` / `Esc` | Quit PSBoombox cleanly |
-| `B` | Enable the optional Burnt Toast notification feature. |
+| `B` | Toggle the optional Burnt Toast notification feature on / off *(persisted to `%APPDATA%\PSBoombox\config.json`)* |
 
 ### Directory Browser (`Tab` → Left Pane)
 
@@ -368,7 +406,7 @@ Burnt Toast has been marked as archived by the original author. PSBoombox has be
 | `PageUp` / `PageDown` | Adjust focused slider by **±3 dB** |
 | `Home` / `End` | Jump focused slider to `+12 dB` / `-12 dB` |
 | `0` / `Delete` | Reset focused slider to `0 dB` |
-| `T` | Toggle Equalizer On / Off *(persisted to `%APPDATA%\PSBoombox\equalizer.json`)* |
+| `T` | Toggle Equalizer On / Off *(persisted to `%APPDATA%\PSBoombox\config.json`)* |
 | `P` / `Shift+P` *(or `]` / `[`)* | Cycle forward / backward through built-in and custom user presets |
 | `S` | Save current slider settings as a custom named preset *(Enter saves, Esc cancels name entry)* |
 | `X` | Delete the currently active user preset *(built-in presets are protected)* |
@@ -386,6 +424,7 @@ Burnt Toast has been marked as archived by the original author. PSBoombox has be
 | `S` | Stop playback and automatically return to Playlist Mode |
 | `+` / `-` / `M` | Adjust volume ±5% or toggle Mute |
 | `R` / `H` | Cycle Repeat mode / Toggle Shuffle |
+| `B` | Toggle Burnt Toast notifications on / off *(persisted to `%APPDATA%\PSBoombox\config.json`)* |
 | `Q` | Quit PSBoombox cleanly |
 
 ### Theme Selector Modal (`T`)
@@ -395,5 +434,5 @@ Burnt Toast has been marked as archived by the original author. PSBoombox has be
 | `Left` / `Right` | Switch between **Dark** and **Light** tabs *(previews immediately)* |
 | `Up` / `Down` (`PageUp`/`PageDown`/`Home`/`End`) | Browse themes in the active tab *(previews immediately across entire UI)* |
 | `Tab` / `Shift+Tab` | Move focus across Tabs, Theme List, `[ Apply ]`, and `[ Cancel ]` |
-| `Enter` | Apply selected theme and persist to `%APPDATA%\PSBoombox\theme.json` |
+| `Enter` | Apply selected theme and persist to `%APPDATA%\PSBoombox\config.json` |
 | `Esc` | Cancel selection and revert back to the active theme |

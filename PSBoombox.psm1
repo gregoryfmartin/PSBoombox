@@ -38,6 +38,7 @@ Foreach($EnumFile in (Get-ChildItem -Path $Script:DirEnums -Filter '*.ps1' | Sor
 . "$($Script:DirUtil)/BufferSpecDefinition.ps1"
 . "$($Script:DirUtil)/Janitor.ps1"
 . "$($Script:DirUtil)/Functions.ps1"
+. "$($Script:DirUtil)/PBConfigService.ps1"
 
 # LOAD STATE MACHINES
 . "$($Script:DirStateMachine)/SMState.ps1"

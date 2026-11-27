@@ -78,6 +78,7 @@ Class PBStateInit : SMState {
                 }
             }
 
+            $Core.ConfigService.Load()
             $Core.ThemeService.Load()
 
             If(($null -NE $Core.InitialTheme) -AND ($Core.InitialTheme.Trim().Length -GT 0)) {
@@ -104,11 +105,21 @@ Class PBStateInit : SMState {
             }
 
             If($Core.IsBufferTooSmall -EQ $true) {
-                $Core.SuspendedStateName   = 'PBStateMainPlayer'
+                If($Core.NotificationService.NeedsMissingModuleNotice -EQ $true) {
+                    $Core.ConfigureBurntToastMissingNotice()
+                    $Core.SuspendedStateName = 'PBStateNoticeModal'
+                } Else {
+                    $Core.SuspendedStateName = 'PBStateMainPlayer'
+                }
+
                 $Core.IsSuspendedForResize = $false
                 $Core.AppState.Trigger('BufferTooSmall', $Context)
             } Else {
                 $Core.AppState.Trigger('Ready', $Context)
+
+                If($Core.NotificationService.NeedsMissingModuleNotice -EQ $true) {
+                    $Core.OpenBurntToastMissingNotice($Context)
+                }
             }
         }
     }

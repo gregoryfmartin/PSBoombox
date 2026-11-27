@@ -30,9 +30,11 @@ Class MMNotificationService {
     [Boolean]$IsHeadless
     [Boolean]$IsInitialized
     [Boolean]$IsDisposed
+    [Boolean]$NeedsMissingModuleNotice
     [String]$IconPath
     [Int]$DebounceMs
     [String]$LastNotifiedTrackPath
+    [PBConfigService]$ConfigService
     [Object]$SyncLock
     [Hashtable]$SharedState
     [AutoResetEvent]$WakeEvent
@@ -42,22 +44,36 @@ Class MMNotificationService {
     [ScriptBlock]$DispatchOverride
 
     MMNotificationService() {
-        $this.IsModuleLoaded        = $false
-        $this.LoadedModulePath      = ''
-        $this.IsEnabled             = $false
-        $this.IsHeadless            = $false
-        $this.IsInitialized         = $false
-        $this.IsDisposed            = $false
-        $this.IconPath              = [MMNotificationService]::DefaultIconPath
-        $this.DebounceMs            = [MMNotificationService]::DefaultDebounceMs
-        $this.LastNotifiedTrackPath = ''
-        $this.SyncLock              = [Object]::new()
-        $this.SharedState           = $null
-        $this.WakeEvent             = $null
-        $this.WorkerRunspace        = $null
-        $this.WorkerPowerShell      = $null
-        $this.WorkerAsyncResult     = $null
-        $this.DispatchOverride      = $null
+        $this.InitDefaults($null)
+    }
+
+    MMNotificationService(
+        [PBConfigService]$ConfigService
+    ) {
+        $this.InitDefaults($ConfigService)
+    }
+
+    [Void]InitDefaults(
+        [PBConfigService]$ConfigService
+    ) {
+        $this.IsModuleLoaded           = $false
+        $this.LoadedModulePath         = ''
+        $this.IsEnabled                = $false
+        $this.IsHeadless               = $false
+        $this.IsInitialized            = $false
+        $this.IsDisposed               = $false
+        $this.NeedsMissingModuleNotice = $false
+        $this.IconPath                 = [MMNotificationService]::DefaultIconPath
+        $this.DebounceMs               = [MMNotificationService]::DefaultDebounceMs
+        $this.LastNotifiedTrackPath    = ''
+        $this.ConfigService            = $ConfigService
+        $this.SyncLock                 = [Object]::new()
+        $this.SharedState              = $null
+        $this.WakeEvent                = $null
+        $this.WorkerRunspace           = $null
+        $this.WorkerPowerShell         = $null
+        $this.WorkerAsyncResult        = $null
+        $this.DispatchOverride         = $null
     }
 
     [Void]Initialize(
@@ -98,15 +114,21 @@ Class MMNotificationService {
             $this.IconPath = [MMNotificationService]::DefaultIconPath
         }
 
+        [Boolean]$PersistedEnabled = ($null -NE $this.ConfigService) ? $this.ConfigService.BurntToastEnabled : $false
+
         If(($null -EQ $ModulePath) -OR ($ModulePath.Trim().Length -EQ 0)) {
-            $this.IsModuleLoaded   = $false
-            $this.LoadedModulePath = ''
+            $this.IsModuleLoaded           = $false
+            $this.LoadedModulePath         = ''
+            $this.IsEnabled                = $false
+            $this.NeedsMissingModuleNotice = $PersistedEnabled
 
             Return
         }
 
-        $this.IsModuleLoaded   = $true
-        $this.LoadedModulePath = $ModulePath.Trim()
+        $this.IsModuleLoaded           = $true
+        $this.LoadedModulePath         = $ModulePath.Trim()
+        $this.NeedsMissingModuleNotice = $false
+        $this.IsEnabled                = $PersistedEnabled
 
         If(($IsHeadlessMode -EQ $true) -OR ($null -NE $this.DispatchOverride)) {
             Return
@@ -327,6 +349,11 @@ Class MMNotificationService {
 
         $this.IsEnabled = (-NOT $this.IsEnabled)
 
+        If($null -NE $this.ConfigService) {
+            $this.ConfigService.SetBurntToastEnabled($this.IsEnabled)
+            $null = $this.ConfigService.Save()
+        }
+
         If($this.IsEnabled -EQ $true) {
             $this.LastNotifiedTrackPath = ($null -EQ $CurrentPlayingPath) ? '' : $CurrentPlayingPath
 
@@ -343,6 +370,16 @@ Class MMNotificationService {
                 Enabled = $false
                 Message = 'BurntToast notifications: Off'
             }
+        }
+    }
+
+    [Void]DisablePersistedSetting() {
+        $this.NeedsMissingModuleNotice = $false
+        $this.IsEnabled                = $false
+
+        If($null -NE $this.ConfigService) {
+            $this.ConfigService.SetBurntToastEnabled($false)
+            $null = $this.ConfigService.Save()
         }
     }
 

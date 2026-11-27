@@ -41,6 +41,7 @@ Class PBStateNoticeModal : SMState {
                 Return
             }
 
+            $Core.EnterAlternateScreen()
             $Core.PlaybackPanel.UnfocusAllElements($Context)
             $Core.DirectoryPanel.UnfocusAllElements($Context)
             $Core.PlaylistPanel.UnfocusAllElements($Context)
@@ -48,6 +49,7 @@ Class PBStateNoticeModal : SMState {
             $Core.PlaybackPanel.Deactivate($Context)
             $Core.DirectoryPanel.Deactivate($Context)
             $Core.PlaylistPanel.Deactivate($Context)
+            $Core.FooterPanel.Activate($Context)
 
             $Core.SyncAllPanelsFromState()
             $Core.PlaybackPanel.SetAllElementsDirty()
@@ -58,6 +60,14 @@ Class PBStateNoticeModal : SMState {
                 Param(
                     [Context]$DismissContext
                 )
+
+                [ScriptBlock]$AfterCallback      = $Core.NoticeModal.OnAfterDismiss
+                $Core.NoticeModal.OnAfterDismiss = $null
+                $Core.NoticeModal.AllowQuit      = $false
+
+                If($null -NE $AfterCallback) {
+                    $AfterCallback.Invoke($DismissContext)
+                }
 
                 $Core.FooterPanel.SetStatus('Ready')
                 $Core.AppState.Trigger('CloseNoticeModal', [Context]::new(@{ [SMState]::ContextBoomboxCore = $Core }))
@@ -82,7 +92,12 @@ Class PBStateNoticeModal : SMState {
             $Core.NoticeModal.Activate($Context)
             $Core.NoticeModal.SetAllElementsDirty()
             $Core.NoticeModal.FocusElementByKey(3, $Context)
-            $Core.FooterPanel.SetStatus('Press Enter, Space, or Esc to dismiss')
+
+            If($Core.NoticeModal.AllowQuit -EQ $true) {
+                $Core.FooterPanel.SetStatus('Press [Q] to quit, or Enter/Space/Esc to continue')
+            } Else {
+                $Core.FooterPanel.SetStatus('Press Enter, Space, or Esc to dismiss')
+            }
         }
 
         $this.OnExit = {
@@ -123,9 +138,22 @@ Class PBStateNoticeModal : SMState {
 
             If($null -NE $KeysPressed) {
                 Foreach($KeyInfo in $KeysPressed) {
+                    If(($Core.NoticeModal.AllowQuit -EQ $true) -AND ($KeyInfo.Key -EQ [ConsoleKey]::Q)) {
+                        $Core.NoticeModal.OnAfterDismiss = $null
+                        $Core.NoticeModal.AllowQuit      = $false
+
+                        $Core.AppState.Trigger('Quit', $Context)
+
+                        Return
+                    }
+
                     If(($KeyInfo.Key -EQ [ConsoleKey]::Escape) -OR ($KeyInfo.Key -EQ [ConsoleKey]::Enter) -OR ($KeyInfo.Key -EQ [ConsoleKey]::Spacebar)) {
-                        $Core.FooterPanel.SetStatus('Ready')
-                        $Core.AppState.Trigger('CloseNoticeModal', $Context)
+                        If($null -NE $Core.NoticeModal.OnDismiss) {
+                            $Core.NoticeModal.OnDismiss.Invoke($Context)
+                        } Else {
+                            $Core.FooterPanel.SetStatus('Ready')
+                            $Core.AppState.Trigger('CloseNoticeModal', $Context)
+                        }
 
                         Return
                     }

@@ -33,6 +33,7 @@ Class BoomboxCore : AppCore {
     [MMDirectoryService]$DirectoryService
     [MMPlaylist]$Playlist
     [MMMediaPlayer]$MediaPlayer
+    [PBConfigService]$ConfigService
     [MMEqualizerService]$EqualizerService
     [MMNotificationService]$NotificationService
     [UIThemeService]$ThemeService
@@ -97,9 +98,10 @@ Class BoomboxCore : AppCore {
         $this.SuspendedStateName           = ''
         $this.DirectoryService             = [MMDirectoryService]::new()
         $this.Playlist                     = [MMPlaylist]::new()
-        $this.EqualizerService             = [MMEqualizerService]::new()
-        $this.NotificationService          = [MMNotificationService]::new()
-        $this.ThemeService                 = [UIThemeService]::new()
+        $this.ConfigService                = [PBConfigService]::new()
+        $this.EqualizerService             = [MMEqualizerService]::new($this.ConfigService)
+        $this.NotificationService          = [MMNotificationService]::new($this.ConfigService)
+        $this.ThemeService                 = [UIThemeService]::new($this.ConfigService)
         $this.MediaPlayer                  = [MMMediaPlayer]::new()
         $this.MediaPlayer.EqualizerService = $this.EqualizerService
         $this.ActiveFocusZone              = [BoomboxFocusZone]::DirectoryBrowser
@@ -600,6 +602,7 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStateThemeSelector', 'CloseThemeSelector', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenNoticeModal', 'PBStateNoticeModal'),
             [SMTransition]::new('PBStateNoticeModal', 'CloseNoticeModal', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateNoticeModal', 'Quit', 'PBStateShutdown'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenVisualizer', 'PBStateVisualizer'),
             [SMTransition]::new('PBStateVisualizer', 'CloseVisualizer', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateVisualizer', 'VisualizerToNoticeModal', 'PBStateNoticeModal'),
@@ -1199,6 +1202,35 @@ Class BoomboxCore : AppCore {
             'OK'
         )
         $this.AppState.Trigger($TransitionName, $Context)
+    }
+
+    [Void]ConfigureBurntToastMissingNotice() {
+        $this.NoticeModal.Configure(
+            'BurntToast Not Loaded',
+            @(
+                'BurntToast notifications are enabled in config,',
+                'but BurntToast is not imported in this session.',
+                'Press [Q] to quit & relaunch, or Enter to continue.'
+            ),
+            'Continue'
+        )
+
+        [BoomboxCore]$SelfCore             = $this
+        $this.NoticeModal.AllowQuit      = $true
+        $this.NoticeModal.OnAfterDismiss = {
+            Param(
+                [Context]$DismissContext
+            )
+
+            $SelfCore.NotificationService.DisablePersistedSetting()
+        }.GetNewClosure()
+    }
+
+    [Void]OpenBurntToastMissingNotice(
+        [Context]$Context
+    ) {
+        $this.ConfigureBurntToastMissingNotice()
+        $this.AppState.Trigger('OpenNoticeModal', $Context)
     }
 
     [Void]TryOpenVisualizer(

@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 #
 # LOADS EMBEDDED GOGH JSON COLOR THEMES AND OPTIONAL CUSTOM GOGH JSON FILES,
 # MAPS PALETTES INTO COLORLIBRARY SEMANTIC TOKENS IN-PLACE, AND PERSISTS THE
-# ACTIVE THEME TO %APPDATA%\PSBOOMBOX\THEME.JSON.
+# ACTIVE THEME TO %APPDATA%\PSBOOMBOX\CONFIG.JSON.
 #
 ###############################################################################
 
@@ -30,6 +30,7 @@ Class UIThemeService {
     [UIThemeDefinition]$ActiveTheme
     [String]$ActiveThemeName
     [String]$ActiveCustomThemePath
+    [PBConfigService]$ConfigService
     [String]$ConfigDirectory
     [String]$ConfigFilePath
     [String]$LastError
@@ -45,18 +46,15 @@ Class UIThemeService {
         $this.Initialize($ConfigDirectory)
     }
 
+    UIThemeService(
+        [PBConfigService]$ConfigService
+    ) {
+        $this.InitializeWithConfig($ConfigService)
+    }
+
     [Void]Initialize(
         [String]$ConfigDirectory
     ) {
-        $this.AllThemes             = [List[UIThemeDefinition]]::new()
-        $this.DarkThemes            = [List[UIThemeDefinition]]::new()
-        $this.LightThemes           = [List[UIThemeDefinition]]::new()
-        $this.ActiveTheme           = $null
-        $this.ActiveThemeName       = [UIThemeService]::DefaultThemeName
-        $this.ActiveCustomThemePath = ''
-        $this.LastError             = ''
-        $this.OnThemeChanged        = $null
-
         [String]$TargetDir = $ConfigDirectory
 
         If(($null -EQ $TargetDir) -OR ($TargetDir.Trim().Length -EQ 0)) {
@@ -64,12 +62,30 @@ Class UIThemeService {
         }
 
         If(($null -EQ $TargetDir) -OR ($TargetDir.Trim().Length -EQ 0)) {
-            [String]$AppDataRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
-            $TargetDir           = [Path]::Combine($AppDataRoot, 'PSBoombox')
+            $TargetDir = [PBConfigService]::ConfigDirectoryOverride
         }
 
-        $this.ConfigDirectory = [Path]::GetFullPath($TargetDir)
-        $this.ConfigFilePath  = [Path]::Combine($this.ConfigDirectory, 'theme.json')
+        [PBConfigService]$LocalConfig = (($null -NE $TargetDir) -AND ($TargetDir.Trim().Length -GT 0)) ? [PBConfigService]::new($TargetDir) : [PBConfigService]::new()
+
+        $this.InitializeWithConfig($LocalConfig)
+    }
+
+    [Void]InitializeWithConfig(
+        [PBConfigService]$ConfigService
+    ) {
+        [PBConfigService]$ResolvedConfig = ($null -NE $ConfigService) ? $ConfigService : [PBConfigService]::new()
+
+        $this.AllThemes             = [List[UIThemeDefinition]]::new()
+        $this.DarkThemes            = [List[UIThemeDefinition]]::new()
+        $this.LightThemes           = [List[UIThemeDefinition]]::new()
+        $this.ActiveTheme           = $null
+        $this.ActiveThemeName       = [UIThemeService]::DefaultThemeName
+        $this.ActiveCustomThemePath = ''
+        $this.ConfigService         = $ResolvedConfig
+        $this.ConfigDirectory       = $ResolvedConfig.ConfigDirectory
+        $this.ConfigFilePath        = $ResolvedConfig.ConfigFilePath
+        $this.LastError             = ''
+        $this.OnThemeChanged        = $null
 
         $this.LoadEmbeddedThemes()
 
@@ -446,59 +462,35 @@ Class UIThemeService {
 
         [UIThemeDefinition]$DefaultDef = $this.FindBuiltInTheme([UIThemeService]::DefaultThemeName)
 
-        If([File]::Exists($this.ConfigFilePath) -EQ $false) {
-            If($null -NE $DefaultDef) {
-                $this.ApplyTheme($DefaultDef, $false)
-            }
-
-            Return
+        If($this.ConfigService.IsLoaded -EQ $false) {
+            $this.ConfigService.Load()
         }
 
-        Try {
-            [String]$RawJson = [File]::ReadAllText($this.ConfigFilePath, [Encoding]::UTF8)
+        If($this.ConfigService.LastError.Length -GT 0) {
+            $this.LastError = $this.ConfigService.LastError
+        }
 
-            If($RawJson.Trim().Length -EQ 0) {
-                If($null -NE $DefaultDef) {
-                    $this.ApplyTheme($DefaultDef, $false)
-                }
+        [String]$SavedCustomPath = $this.ConfigService.ThemeCustomThemePath
+        [String]$SavedThemeName  = $this.ConfigService.ThemeActiveTheme
 
-                Return
-            }
+        If(($SavedCustomPath.Length -GT 0) -AND ([File]::Exists($SavedCustomPath) -EQ $true)) {
+            [UIThemeDefinition]$CustomDef = $this.LoadThemeFromFile($SavedCustomPath)
 
-            [Object]$Parsed = $RawJson | ConvertFrom-Json -ErrorAction Stop
-
-            If($null -EQ $Parsed) {
-                If($null -NE $DefaultDef) {
-                    $this.ApplyTheme($DefaultDef, $false)
-                }
+            If($null -NE $CustomDef) {
+                $this.ApplyTheme($CustomDef, $false)
 
                 Return
             }
+        }
 
-            [String]$SavedCustomPath = ($null -NE $Parsed.PSObject.Properties['CustomThemePath']) ? ([String]$Parsed.CustomThemePath).Trim() : ''
-            [String]$SavedThemeName  = ($null -NE $Parsed.PSObject.Properties['ActiveTheme']) ? ([String]$Parsed.ActiveTheme).Trim() : ''
+        If($SavedThemeName.Length -GT 0) {
+            [UIThemeDefinition]$BuiltInDef = $this.FindBuiltInTheme($SavedThemeName)
 
-            If(($SavedCustomPath.Length -GT 0) -AND ([File]::Exists($SavedCustomPath) -EQ $true)) {
-                [UIThemeDefinition]$CustomDef = $this.LoadThemeFromFile($SavedCustomPath)
+            If($null -NE $BuiltInDef) {
+                $this.ApplyTheme($BuiltInDef, $false)
 
-                If($null -NE $CustomDef) {
-                    $this.ApplyTheme($CustomDef, $false)
-
-                    Return
-                }
+                Return
             }
-
-            If($SavedThemeName.Length -GT 0) {
-                [UIThemeDefinition]$BuiltInDef = $this.FindBuiltInTheme($SavedThemeName)
-
-                If($null -NE $BuiltInDef) {
-                    $this.ApplyTheme($BuiltInDef, $false)
-
-                    Return
-                }
-            }
-        } Catch {
-            $this.LastError = "Failed to parse theme settings: $($_.Exception.Message)"
         }
 
         If($null -NE $DefaultDef) {
@@ -507,27 +499,14 @@ Class UIThemeService {
     }
 
     [Boolean]Save() {
-        Try {
-            If([Directory]::Exists($this.ConfigDirectory) -EQ $false) {
-                $null = [Directory]::CreateDirectory($this.ConfigDirectory)
-            }
+        $this.ConfigService.SetThemeSection($this.ActiveThemeName, $this.ActiveCustomThemePath)
 
-            [Hashtable]$Payload = @{
-                Version         = 1
-                ActiveTheme     = $this.ActiveThemeName
-                CustomThemePath = $this.ActiveCustomThemePath
-            }
+        [Boolean]$Saved = $this.ConfigService.Save()
 
-            [String]$JsonText        = $Payload | ConvertTo-Json -Depth 4
-            [UTF8Encoding]$Utf8NoBom = [UTF8Encoding]::new($false)
-
-            [File]::WriteAllText($this.ConfigFilePath, $JsonText, $Utf8NoBom)
-
-            Return $true
-        } Catch {
-            $this.LastError = "Failed to save theme settings: $($_.Exception.Message)"
-
-            Return $false
+        If($Saved -EQ $false) {
+            $this.LastError = $this.ConfigService.LastError
         }
+
+        Return $Saved
     }
 }

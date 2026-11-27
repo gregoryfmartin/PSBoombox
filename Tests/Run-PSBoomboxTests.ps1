@@ -84,8 +84,10 @@ If($null -NE $ModuleScope) {
 
         . "$($TestRoot)\Test-Helpers.ps1"
 
+        [String]$IsolatedConfigDir      = Join-Path ([Path]::GetTempPath()) "PSBoombox_AppCfgTest_$([Guid]::NewGuid().ToString('N'))"
         [String]$IsolatedEqConfigDir    = Join-Path ([Path]::GetTempPath()) "PSBoombox_EqCfgTest_$([Guid]::NewGuid().ToString('N'))"
         [String]$IsolatedThemeConfigDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_ThemeCfgTest_$([Guid]::NewGuid().ToString('N'))"
+        [PBConfigService]::ConfigDirectoryOverride    = $IsolatedConfigDir
         [MMEqualizerService]::ConfigDirectoryOverride = $IsolatedEqConfigDir
         [UIThemeService]::ConfigDirectoryOverride     = $IsolatedThemeConfigDir
 
@@ -518,7 +520,7 @@ If($null -NE $ModuleScope) {
             [Hashtable]$SaveRes = $Svc1.SaveUserPreset('Studio Cans')
             Assert-True $SaveRes.Success "Saving named user preset failed: $($SaveRes.Message)"
             $Svc1.SetEnabled($true)
-            Assert-True ([File]::Exists((Join-Path $CfgTemp 'equalizer.json'))) 'equalizer.json must be written to disk'
+            Assert-True ([File]::Exists((Join-Path $CfgTemp 'config.json'))) 'config.json must be written to disk'
 
             [MMEqualizerService]$Svc2 = [MMEqualizerService]::new($CfgTemp)
             $Svc2.Load()
@@ -527,16 +529,19 @@ If($null -NE $ModuleScope) {
             Assert-Equal $Svc2.BandGainsDb[1] 12 'Persisted band gains must load cleanly'
             Assert-True ($Svc2.IsActivePresetDeletable()) 'Custom preset should be marked deletable'
 
-            [String]$PrevOverride = [MMEqualizerService]::ConfigDirectoryOverride
+            [String]$PrevCfgOverride = [PBConfigService]::ConfigDirectoryOverride
+            [String]$PrevOverride    = [MMEqualizerService]::ConfigDirectoryOverride
+            [PBConfigService]::ConfigDirectoryOverride    = $CfgTemp
             [MMEqualizerService]::ConfigDirectoryOverride = $CfgTemp
             [String]$EmptyMediaDir = Join-Path $CfgTemp 'EmptyDir'
             $null = New-Item -Path $EmptyMediaDir -ItemType Directory -Force
             [BoomboxCore]$RestartCore = [BoomboxCore]::new($EmptyMediaDir, '')
             $RestartCore.InitializeStates()
             $RestartCore.Logic(0.016)
-            Assert-True $RestartCore.EqualizerService.Enabled 'Fresh BoomboxCore startup must load Enabled=true from equalizer.json'
+            Assert-True $RestartCore.EqualizerService.Enabled 'Fresh BoomboxCore startup must load Enabled=true from config.json'
             Assert-Equal $RestartCore.EqualizerService.ActivePresetName 'Studio Cans' 'Fresh BoomboxCore startup must restore saved custom preset'
             $RestartCore.Cleanup()
+            [PBConfigService]::ConfigDirectoryOverride    = $PrevCfgOverride
             [MMEqualizerService]::ConfigDirectoryOverride = $PrevOverride
 
             [Hashtable]$DelRes = $Svc2.DeleteUserPreset('Studio Cans')
@@ -1200,8 +1205,10 @@ If($null -NE $ModuleScope) {
         $null = New-Item -Path $ThemeCfgDir -ItemType Directory -Force
         $null = New-Item -Path $MediaTempDir -ItemType Directory -Force
 
+        [String]$PrevCfgOverride   = [PBConfigService]::ConfigDirectoryOverride
         [String]$PrevThemeOverride = [UIThemeService]::ConfigDirectoryOverride
-        [UIThemeService]::ConfigDirectoryOverride = $ThemeCfgDir
+        [PBConfigService]::ConfigDirectoryOverride = $ThemeCfgDir
+        [UIThemeService]::ConfigDirectoryOverride  = $ThemeCfgDir
 
         Try {
             New-TestWavFile -FilePath (Join-Path $MediaTempDir 'palette_song.wav') -DurationMs 800
@@ -1273,9 +1280,12 @@ If($null -NE $ModuleScope) {
             Assert-Equal $Core.ThemeService.ActiveThemeName 'PSBoombox Default' 'Cancel must revert ActiveThemeName back to PSBoombox Default'
             Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#0C0C0C' 'Cancel must revert ThemeBackground back to #0C0C0C'
             Assert-Equal $Core.VisualizerCanvas.NativeCanvas.DefaultBgRgb 0x0C0C0C 'Cancel must revert VisualizerCanvas DefaultBgRgb back to 0x0C0C0C'
-            Assert-False ([File]::Exists((Join-Path $ThemeCfgDir 'theme.json'))) 'Cancel must not persist theme.json'
+            [String]$ThemeSuiteCfgPath = Join-Path $ThemeCfgDir 'config.json'
+            Assert-True ([File]::Exists($ThemeSuiteCfgPath)) 'config.json must be auto-created on first launch'
+            $CancelCfgJson = [File]::ReadAllText($ThemeSuiteCfgPath) | ConvertFrom-Json
+            Assert-Equal $CancelCfgJson.Theme.ActiveTheme 'PSBoombox Default' 'Cancel must not persist previewed theme to config.json'
 
-            # 3. APPLY + PERSISTENCE (T -> LIGHT TAB -> ENTER -> THEME.JSON -> FRESH LAUNCH)
+            # 3. APPLY + PERSISTENCE (T -> LIGHT TAB -> ENTER -> CONFIG.JSON -> FRESH LAUNCH)
             $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
             $Core.Logic(0.033)
             $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
@@ -1284,7 +1294,9 @@ If($null -NE $ModuleScope) {
             $Core.Logic(0.033)
             Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Enter applies selected theme and returns to MainPlayer'
             Assert-Equal $Core.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Applied theme must be Catppuccin Latte'
-            Assert-True ([File]::Exists((Join-Path $ThemeCfgDir 'theme.json'))) 'Applying theme must write theme.json'
+            Assert-True ([File]::Exists($ThemeSuiteCfgPath)) 'Applying theme must write config.json'
+            $ApplyCfgJson = [File]::ReadAllText($ThemeSuiteCfgPath) | ConvertFrom-Json
+            Assert-Equal $ApplyCfgJson.Theme.ActiveTheme 'Catppuccin Latte' 'Applying theme must persist Theme.ActiveTheme in config.json'
             $Core.Cleanup()
 
             # RESET COLOR LIBRARY THEN BOOT A FRESH CORE TO TEST PERSISTENCE
@@ -1294,7 +1306,7 @@ If($null -NE $ModuleScope) {
             [BoomboxCore]$RestartCore = [BoomboxCore]::new($MediaTempDir, '')
             $RestartCore.InitializeStates()
             $RestartCore.Logic(0.016)
-            Assert-Equal $RestartCore.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Fresh BoomboxCore launch must restore persisted theme from theme.json'
+            Assert-Equal $RestartCore.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Fresh BoomboxCore launch must restore persisted theme from config.json'
             Assert-Equal ([ColorLibrary]::ThemeBackground.ToHexString()) '#EFF1F5' 'Restored Light theme background must be #EFF1F5'
             $RestartCore.Cleanup()
 
@@ -1358,7 +1370,8 @@ If($null -NE $ModuleScope) {
             Assert-Equal $BadThemeCore.ThemeService.ActiveThemeName 'Catppuccin Latte' 'Unknown -Theme falls back safely to persisted theme'
             $BadThemeCore.Cleanup()
         } Finally {
-            [UIThemeService]::ConfigDirectoryOverride = $PrevThemeOverride
+            [PBConfigService]::ConfigDirectoryOverride = $PrevCfgOverride
+            [UIThemeService]::ConfigDirectoryOverride  = $PrevThemeOverride
             [ColorLibrary]::ResetSemanticDefaults()
             Remove-Item -Path $ThemeCfgDir -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -Path $MediaTempDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -1689,10 +1702,184 @@ Export-ModuleMember -Function 'New-BurntToastNotification', 'Remove-BTNotificati
             Remove-Item -Path $MockRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+
+    & $InvokeCase -Name 'Centralized config.json (Auto-Create, Legacy Migration, Malformed Fallback, and Missing BurntToast Startup Modal)' -Body {
+        # 1. AUTO-CREATION OF GROUPED CONFIG.JSON ON FIRST LAUNCH
+        [String]$AutoDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_CfgAuto_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $AutoDir -ItemType Directory -Force
+
+        Try {
+            [PBConfigService]$AutoCfg = [PBConfigService]::new($AutoDir)
+            $AutoCfg.Load()
+
+            [String]$AutoFile = Join-Path $AutoDir 'config.json'
+            Assert-True ([File]::Exists($AutoFile)) 'config.json must be auto-created on first launch'
+            Assert-False $AutoCfg.DidMigrateLegacyFiles 'Fresh directory must not flag legacy migration'
+
+            $AutoParsed = [File]::ReadAllText($AutoFile) | ConvertFrom-Json
+            Assert-Equal $AutoParsed.Version 1 'Schema Version must be 1'
+            Assert-Equal $AutoParsed.Theme.ActiveTheme 'PSBoombox Default' 'Default Theme.ActiveTheme mismatch'
+            Assert-Equal $AutoParsed.Equalizer.ActivePreset 'Flat' 'Default Equalizer.ActivePreset mismatch'
+            Assert-False ([Boolean]$AutoParsed.Equalizer.Enabled) 'Default Equalizer.Enabled must be false'
+            Assert-Equal $AutoParsed.Equalizer.Bands.Count 10 'Default Equalizer.Bands must have 10 bands'
+            Assert-False ([Boolean]$AutoParsed.Notifications.BurntToastEnabled) 'Default Notifications.BurntToastEnabled must be false'
         } Finally {
+            Remove-Item -Path $AutoDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # 2. DEPRECATED LEGACY MIGRATION (THEME.JSON + EQUALIZER.JSON -> CONFIG.JSON + CLEANUP)
+        [String]$MigDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_CfgMig_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $MigDir -ItemType Directory -Force
+
+        Try {
+            [String]$LegacyThemePath = Join-Path $MigDir 'theme.json'
+            [String]$LegacyEqPath    = Join-Path $MigDir 'equalizer.json'
+
+            [File]::WriteAllText($LegacyThemePath, '{"Version":1,"ActiveTheme":"Catppuccin Mocha","CustomThemePath":""}')
+            [File]::WriteAllText($LegacyEqPath, '{"Version":1,"Enabled":true,"ActivePreset":"Legacy Mix","PreampDb":2,"Bands":[1,2,3,0,0,0,-1,-2,3,4],"UserPresets":[{"Name":"Legacy Mix","PreampDb":2,"Bands":[1,2,3,0,0,0,-1,-2,3,4]}]}')
+
+            [PBConfigService]$MigCfg = [PBConfigService]::new($MigDir)
+            $MigCfg.Load()
+
+            Assert-True $MigCfg.DidMigrateLegacyFiles 'DidMigrateLegacyFiles must be true after importing legacy files'
+            Assert-True ([File]::Exists((Join-Path $MigDir 'config.json'))) 'Migrated config.json must exist'
+            Assert-False ([File]::Exists($LegacyThemePath)) 'Legacy theme.json must be removed after migration'
+            Assert-False ([File]::Exists($LegacyEqPath)) 'Legacy equalizer.json must be removed after migration'
+            Assert-Equal $MigCfg.ThemeActiveTheme 'Catppuccin Mocha' 'Migrated Theme must preserve Catppuccin Mocha'
+            Assert-True $MigCfg.EqualizerEnabled 'Migrated Equalizer.Enabled must preserve true'
+            Assert-Equal $MigCfg.EqualizerActivePreset 'Legacy Mix' 'Migrated Equalizer.ActivePreset must preserve Legacy Mix'
+            Assert-Equal $MigCfg.EqualizerBands[9] 4 'Migrated Equalizer.Bands must preserve values'
+            Assert-Equal $MigCfg.EqualizerUserPresets.Count 1 'Migrated Equalizer.UserPresets must preserve custom preset'
+            Assert-False $MigCfg.BurntToastEnabled 'Migrated config must default BurntToastEnabled to false'
+        } Finally {
+            Remove-Item -Path $MigDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # 3. MALFORMED JSON & MALFORMED FIELD FALLBACK
+        [String]$BadDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_CfgBad_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $BadDir -ItemType Directory -Force
+
+        Try {
+            [String]$BadFile    = Join-Path $BadDir 'config.json'
+            [String]$BrokenText = '{ "Version": 1, "Theme": { broken json'
+            [File]::WriteAllText($BadFile, $BrokenText)
+
+            [PBConfigService]$BrokenCfg = [PBConfigService]::new($BadDir)
+            $BrokenCfg.Load()
+            Assert-True ($BrokenCfg.LastError.Length -GT 0) 'Broken JSON must record LastError'
+            Assert-Equal $BrokenCfg.ThemeActiveTheme 'PSBoombox Default' 'Broken JSON must fall back to default theme'
+            Assert-False $BrokenCfg.BurntToastEnabled 'Broken JSON must fall back to BurntToastEnabled=false'
+            Assert-Equal ([File]::ReadAllText($BadFile)) $BrokenText 'Broken config.json must not be overwritten on load'
+
+            # PARTIALLY MALFORMED SECTIONS: VALID THEME SURVIVES, INVALID FIELDS FALL BACK CLEANLY
+            [File]::WriteAllText($BadFile, '{"Version":1,"Theme":{"ActiveTheme":"Dracula","CustomThemePath":""},"Equalizer":{"Enabled":"bad","PreampDb":"oops","Bands":"not_array"},"Notifications":{"BurntToastEnabled":"notabool"}}')
+            [PBConfigService]$PartialCfg = [PBConfigService]::new($BadDir)
+            $PartialCfg.Load()
+            Assert-Equal $PartialCfg.ThemeActiveTheme 'Dracula' 'Valid Theme section must still load despite malformed sibling fields'
+            Assert-False $PartialCfg.EqualizerEnabled 'Malformed Equalizer.Enabled must fall back to false'
+            Assert-Equal $PartialCfg.EqualizerPreampDb 0 'Malformed Equalizer.PreampDb must fall back to 0'
+            Assert-False $PartialCfg.BurntToastEnabled 'Malformed Notifications.BurntToastEnabled must fall back to false'
+        } Finally {
+            Remove-Item -Path $BadDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # 4. BURNTTOAST TOGGLE PERSISTENCE & NON-CLOBBERING ACROSS SECTIONS
+        [String]$PersistDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_BtPersist_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $PersistDir -ItemType Directory -Force
+
+        Try {
+            [PBConfigService]$Cfg1 = [PBConfigService]::new($PersistDir)
+            $Cfg1.Load()
+            $Cfg1.SetThemeSection('Dracula', '')
+            $null = $Cfg1.Save()
+
+            [MMNotificationService]$Notif1 = [MMNotificationService]::new($Cfg1)
+            $Notif1.InitializeWithModulePath('C:\Fake\BurntToast.psm1', $true)
+            [Hashtable]$TogOn = $Notif1.ToggleEnabled('')
+            Assert-True $TogOn.Enabled 'ToggleEnabled must turn BurntToast on'
+
+            [PBConfigService]$Cfg2 = [PBConfigService]::new($PersistDir)
+            $Cfg2.Load()
+            Assert-True $Cfg2.BurntToastEnabled 'BurntToastEnabled=true must persist in config.json'
+            Assert-Equal $Cfg2.ThemeActiveTheme 'Dracula' 'Saving BurntToastEnabled must not clobber Theme section'
+
+            [MMNotificationService]$Notif2 = [MMNotificationService]::new($Cfg2)
+            $Notif2.InitializeWithModulePath('C:\Fake\BurntToast.psm1', $true)
+            Assert-True $Notif2.IsEnabled 'Fresh MMNotificationService must restore IsEnabled=true when BurntToast is loaded'
+            Assert-False $Notif2.NeedsMissingModuleNotice 'NeedsMissingModuleNotice must be false when BurntToast is loaded'
+
+            [Hashtable]$TogOff = $Notif2.ToggleEnabled('')
+            Assert-False $TogOff.Enabled 'ToggleEnabled must turn BurntToast off'
+
+            [PBConfigService]$Cfg3 = [PBConfigService]::new($PersistDir)
+            $Cfg3.Load()
+            Assert-False $Cfg3.BurntToastEnabled 'BurntToastEnabled=false must persist in config.json'
+        } Finally {
+            Remove-Item -Path $PersistDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # 5. STARTUP MISSING-BURNTTOAST MODAL (Q PRESERVES SETTING, CONTINUE SILENTLY DISABLES)
+        [String]$ModalCfgDir   = Join-Path ([Path]::GetTempPath()) "PSBoombox_BtModalCfg_$([Guid]::NewGuid().ToString('N'))"
+        [String]$ModalMediaDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_BtModalMedia_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $ModalCfgDir -ItemType Directory -Force
+        $null = New-Item -Path $ModalMediaDir -ItemType Directory -Force
+
+        [String]$PrevAppCfg = [PBConfigService]::ConfigDirectoryOverride
+        [PBConfigService]::ConfigDirectoryOverride = $ModalCfgDir
+
+        Try {
+            New-TestWavFile -FilePath (Join-Path $ModalMediaDir 'sample.wav') -DurationMs 500
+            [File]::WriteAllText((Join-Path $ModalCfgDir 'config.json'), '{"Version":1,"Notifications":{"BurntToastEnabled":true}}')
+
+            # PATH A: USER PRESSES Q ON STARTUP MODAL -> QUITS AND PRESERVES BURNTTOASTENABLED=TRUE
+            [BoomboxCore]$QuitCore = [BoomboxCore]::new($ModalMediaDir, '')
+            $QuitCore.InitializeStates()
+            $QuitCore.Logic(0.016)
+            Assert-Equal $QuitCore.AppState.CurrentState 'PBStateNoticeModal' 'Startup with BurntToastEnabled=true and missing module must show PBStateNoticeModal'
+            Assert-True $QuitCore.NoticeModal.AllowQuit 'Missing BurntToast startup modal must allow Quit via Q'
+            Assert-False $QuitCore.NotificationService.IsEnabled 'Runtime notifications must stay disabled when BurntToast is missing'
+
+            $QuitCore.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'q', [ConsoleKey]::Q, $false, $false, $false))
+            $QuitCore.Logic(0.033)
+            Assert-Equal $QuitCore.AppState.CurrentState 'PBStateShutdown' 'Pressing Q on startup notice modal must transition to PBStateShutdown'
+            $QuitCore.Cleanup()
+
+            $AfterQuitJson = [File]::ReadAllText((Join-Path $ModalCfgDir 'config.json')) | ConvertFrom-Json
+            Assert-True ([Boolean]$AfterQuitJson.Notifications.BurntToastEnabled) 'Quitting from startup modal must preserve BurntToastEnabled=true in config.json'
+
+            # PATH B: USER PRESSES ENTER TO CONTINUE -> SILENTLY DISABLES CONFIG SETTING & B STAYS UNAVAILABLE
+            [BoomboxCore]$ContCore = [BoomboxCore]::new($ModalMediaDir, '')
+            $ContCore.InitializeStates()
+            $ContCore.Logic(0.016)
+            Assert-Equal $ContCore.AppState.CurrentState 'PBStateNoticeModal' 'Second launch must still show PBStateNoticeModal while BurntToastEnabled=true'
+
+            $ContCore.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]13, [ConsoleKey]::Enter, $false, $false, $false))
+            $ContCore.Logic(0.033)
+            Assert-Equal $ContCore.AppState.CurrentState 'PBStateMainPlayer' 'Pressing Enter on startup notice modal must continue to PBStateMainPlayer'
+            Assert-False $ContCore.NoticeModal.AllowQuit 'AllowQuit must reset after modal dismissal'
+
+            $AfterContJson = [File]::ReadAllText((Join-Path $ModalCfgDir 'config.json')) | ConvertFrom-Json
+            Assert-False ([Boolean]$AfterContJson.Notifications.BurntToastEnabled) 'Continuing past startup modal must silently set BurntToastEnabled=false in config.json'
+
+            $ContCore.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'b', [ConsoleKey]::B, $false, $false, $false))
+            $ContCore.Logic(0.033)
+            Assert-False $ContCore.NotificationService.IsEnabled 'Pressing B afterwards without BurntToast loaded must remain disabled'
+            Assert-True ($ContCore.FooterPanel.StatusLabel.UserData.Contains('unavailable')) 'Pressing B afterwards must display standard unavailable message'
+            $ContCore.Cleanup()
+        } Finally {
+            [PBConfigService]::ConfigDirectoryOverride = $PrevAppCfg
+            Remove-Item -Path $ModalCfgDir -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $ModalMediaDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+        } Finally {
+            [PBConfigService]::ConfigDirectoryOverride    = ''
             [MMEqualizerService]::ConfigDirectoryOverride = ''
             [UIThemeService]::ConfigDirectoryOverride     = ''
             [ColorLibrary]::ResetSemanticDefaults()
+            If([Directory]::Exists($IsolatedConfigDir) -EQ $true) {
+                Remove-Item -Path $IsolatedConfigDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
             If([Directory]::Exists($IsolatedEqConfigDir) -EQ $true) {
                 Remove-Item -Path $IsolatedEqConfigDir -Recurse -Force -ErrorAction SilentlyContinue
             }

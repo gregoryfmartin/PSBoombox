@@ -20,6 +20,8 @@ Class UINoticeModal : UIPanel {
     [UILabel[]]$MessageLabels
     [UIButton]$OkButton
     [ScriptBlock]$OnDismiss
+    [ScriptBlock]$OnAfterDismiss
+    [Boolean]$AllowQuit
 
     UINoticeModal(
         [Int]$LayoutWidth,
@@ -30,9 +32,11 @@ Class UINoticeModal : UIPanel {
         [Int]$TopRow      = [Math]::Max(3, [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2))
         [Int]$LeftCol     = [Math]::Max(3, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
 
-        $this.LeftTop     = [ATCoordinates]::new($TopRow, $LeftCol)
-        $this.RightBottom = [ATCoordinates]::new(($TopRow + $ModalHeight), ($LeftCol + $ModalWidth))
-        $this.OnDismiss   = $null
+        $this.LeftTop        = [ATCoordinates]::new($TopRow, $LeftCol)
+        $this.RightBottom    = [ATCoordinates]::new(($TopRow + $ModalHeight), ($LeftCol + $ModalWidth))
+        $this.OnDismiss      = $null
+        $this.OnAfterDismiss = $null
+        $this.AllowQuit      = $false
 
         $this.UpdateDimensions()
         $this.SetupTitle('Notice', [ColorLibrary]::BoomboxModalBorder)
@@ -100,6 +104,9 @@ Class UINoticeModal : UIPanel {
         [String[]]$Lines,
         [String]$ButtonLabel
     ) {
+        $this.AllowQuit      = $false
+        $this.OnAfterDismiss = $null
+
         $this.SetupTitle($Title, [ColorLibrary]::BoomboxModalBorder)
         $this.SetBorderColor([ColorLibrary]::BoomboxModalBorder)
 
