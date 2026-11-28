@@ -12,19 +12,15 @@ Set-StrictMode -Version Latest
 # UI THEME MODAL
 #
 # CENTERED TABBED MODAL DIALOG ORGANIZING DARK AND LIGHT COLOR THEMES INTO
-# UITAB PAGES WITH IMMEDIATE LIVE PREVIEW, SWATCH STRIP, AND APPLY/CANCEL.
+# UITAB PAGES WITH IMMEDIATE LIVE PREVIEW AND SWATCH STRIP.
 #
 ###############################################################################
 
 Class UIThemeModal : UITabContainer {
     [UIPanel]$DarkPanel
     [UIList]$DarkList
-    [UIButton]$DarkApplyButton
-    [UIButton]$DarkCancelButton
     [UIPanel]$LightPanel
     [UIList]$LightList
-    [UIButton]$LightApplyButton
-    [UIButton]$LightCancelButton
     [Boolean]$SuppressPreviewEvents
     [Boolean]$SwatchInfoDirty
     [ScriptBlock]$OnThemePreview
@@ -52,9 +48,8 @@ Class UIThemeModal : UITabContainer {
 
         [UIThemeModal]$SelfModal = $this
         [Int]$InnerWidth         = $Bounds.InnerWidth
-        [Int]$ListStartRow       = $Bounds.TopRow + 1
+        [Int]$ListStartRow       = $Bounds.TopRow + 2
         [Int]$ContentCol         = $Bounds.LeftCol + 2
-        [Int]$ButtonRow          = $Bounds.TopRow + 13
 
         $this.DarkPanel = [UIPanel]::new()
         $this.DarkList  = [UIList]::new([ATCoordinates]::new($ListStartRow, $ContentCol), $null, 10)
@@ -79,31 +74,7 @@ Class UIThemeModal : UITabContainer {
             }
         }.GetNewClosure()
 
-        $this.DarkApplyButton = [UIButton]::new('Apply', [ATCoordinates]::new($ButtonRow, $ContentCol), {
-            Param(
-                [Context]$ActionContext
-            )
-
-            [UIThemeDefinition]$Chosen = $SelfModal.GetSelectedTheme()
-
-            If(($null -NE $Chosen) -AND ($null -NE $SelfModal.OnThemeApply)) {
-                $SelfModal.OnThemeApply.Invoke($Chosen)
-            }
-        }.GetNewClosure())
-
-        $this.DarkCancelButton = [UIButton]::new('Cancel', [ATCoordinates]::new($ButtonRow, ($ContentCol + 12)), {
-            Param(
-                [Context]$ActionContext
-            )
-
-            If($null -NE $SelfModal.OnThemeCancel) {
-                $SelfModal.OnThemeCancel.Invoke($ActionContext)
-            }
-        }.GetNewClosure())
-
         $this.DarkPanel.UiElementListing[0] = $this.DarkList
-        $this.DarkPanel.UiElementListing[1] = $this.DarkApplyButton
-        $this.DarkPanel.UiElementListing[2] = $this.DarkCancelButton
 
         $this.LightPanel = [UIPanel]::new()
         $this.LightList  = [UIList]::new([ATCoordinates]::new($ListStartRow, $ContentCol), $null, 10)
@@ -128,31 +99,7 @@ Class UIThemeModal : UITabContainer {
             }
         }.GetNewClosure()
 
-        $this.LightApplyButton = [UIButton]::new('Apply', [ATCoordinates]::new($ButtonRow, $ContentCol), {
-            Param(
-                [Context]$ActionContext
-            )
-
-            [UIThemeDefinition]$Chosen = $SelfModal.GetSelectedTheme()
-
-            If(($null -NE $Chosen) -AND ($null -NE $SelfModal.OnThemeApply)) {
-                $SelfModal.OnThemeApply.Invoke($Chosen)
-            }
-        }.GetNewClosure())
-
-        $this.LightCancelButton = [UIButton]::new('Cancel', [ATCoordinates]::new($ButtonRow, ($ContentCol + 12)), {
-            Param(
-                [Context]$ActionContext
-            )
-
-            If($null -NE $SelfModal.OnThemeCancel) {
-                $SelfModal.OnThemeCancel.Invoke($ActionContext)
-            }
-        }.GetNewClosure())
-
         $this.LightPanel.UiElementListing[0] = $this.LightList
-        $this.LightPanel.UiElementListing[1] = $this.LightApplyButton
-        $this.LightPanel.UiElementListing[2] = $this.LightCancelButton
 
         $this.OnPageChanged = {
             Param(
@@ -200,17 +147,11 @@ Class UIThemeModal : UITabContainer {
         )
 
         [Int]$InnerWidth   = $Bounds.InnerWidth
-        [Int]$ListStartRow = $Bounds.TopRow + 1
+        [Int]$ListStartRow = $Bounds.TopRow + 2
         [Int]$ContentCol   = $Bounds.LeftCol + 2
-        [Int]$ButtonRow    = $Bounds.TopRow + 13
 
         $this.DarkList.SetLayout([ATCoordinates]::new($ListStartRow, $ContentCol), 10, $InnerWidth)
-        $this.DarkApplyButton.SetCoordinates([ATCoordinates]::new($ButtonRow, $ContentCol))
-        $this.DarkCancelButton.SetCoordinates([ATCoordinates]::new($ButtonRow, ($ContentCol + 12)))
-
         $this.LightList.SetLayout([ATCoordinates]::new($ListStartRow, $ContentCol), 10, $InnerWidth)
-        $this.LightApplyButton.SetCoordinates([ATCoordinates]::new($ButtonRow, $ContentCol))
-        $this.LightCancelButton.SetCoordinates([ATCoordinates]::new($ButtonRow, ($ContentCol + 12)))
 
         $this.MarkAllDirtyForThemeChange()
     }
@@ -369,17 +310,7 @@ Class UIThemeModal : UITabContainer {
             Return $true
         }
 
-        [UIPanel]$ActivePanel = $this.GetActiveContentPanel()
-        [Int]$ActiveKey       = ($null -NE $ActivePanel) ? $ActivePanel.ActiveIndex : 0
-
         If(($KeyInfo.Key -EQ [ConsoleKey]::LeftArrow) -OR ($KeyInfo.Key -EQ [ConsoleKey]::RightArrow)) {
-            If(($this.TabGroupFocused -EQ $false) -AND (($ActiveKey -EQ 1) -OR ($ActiveKey -EQ 2)) -AND ($null -NE $ActivePanel)) {
-                [Int]$NextBtnKey = ($ActiveKey -EQ 1) ? 2 : 1
-                $ActivePanel.FocusElementByKey($NextBtnKey, $Context)
-
-                Return $true
-            }
-
             [Boolean]$KeepListFocus = ($this.TabGroupFocused -EQ $false)
 
             If($KeyInfo.Key -EQ [ConsoleKey]::LeftArrow) {
@@ -416,33 +347,19 @@ Class UIThemeModal : UITabContainer {
                 Return $true
             }
 
-            If($ActiveKey -EQ 0) {
-                $this.GetActiveList().HandleKey($KeyInfo, $Context)
-            } Elseif(($KeyInfo.Key -EQ [ConsoleKey]::UpArrow) -AND ($null -NE $ActivePanel)) {
-                $ActivePanel.FocusElementByKey(0, $Context)
-            }
+            $this.GetActiveList().HandleKey($KeyInfo, $Context)
 
             Return $true
         }
 
-        If(($KeyInfo.Key -EQ [ConsoleKey]::Enter) -OR ($KeyInfo.Key -EQ [ConsoleKey]::Spacebar)) {
-            If(($this.TabGroupFocused -EQ $false) -AND ($ActiveKey -EQ 2)) {
-                If($null -NE $this.OnThemeCancel) {
-                    $this.OnThemeCancel.Invoke($Context)
-                }
+        If($KeyInfo.Key -EQ [ConsoleKey]::Enter) {
+            [UIThemeDefinition]$Chosen = $this.GetSelectedTheme()
 
-                Return $false
+            If(($null -NE $Chosen) -AND ($null -NE $this.OnThemeApply)) {
+                $this.OnThemeApply.Invoke($Chosen)
             }
 
-            If(($KeyInfo.Key -EQ [ConsoleKey]::Enter) -OR (($this.TabGroupFocused -EQ $false) -AND ($ActiveKey -EQ 1))) {
-                [UIThemeDefinition]$Chosen = $this.GetSelectedTheme()
-
-                If(($null -NE $Chosen) -AND ($null -NE $this.OnThemeApply)) {
-                    $this.OnThemeApply.Invoke($Chosen)
-                }
-
-                Return $false
-            }
+            Return $false
         }
 
         Return $true
@@ -457,8 +374,7 @@ Class UIThemeModal : UITabContainer {
             Return
         }
 
-        [Int]$SwatchRow  = $this.LeftTop.Row.Value + 11
-        [Int]$InfoRow    = $this.LeftTop.Row.Value + 12
+        [Int]$SwatchRow  = $this.LeftTop.Row.Value + 12
         [Int]$StartCol   = $this.LeftTop.Column.Value + 2
         [Int]$InnerWidth = [Math]::Max(20, ($this.Width - 3))
 
@@ -511,22 +427,7 @@ Class UIThemeModal : UITabContainer {
             }
         )
 
-        [UIThemeDefinition]$Selected = $this.GetSelectedTheme()
-        [String]$VariantLabel        = ($this.ActivePageIndex -EQ 1) ? 'Light' : 'Dark'
-        [String]$ThemeTitle          = ($null -NE $Selected) ? $Selected.Name : 'None'
-        [String]$InfoRaw             = "Preview: $($ThemeTitle) ($($VariantLabel))"
-        [String]$InfoPadded          = (Format-TruncatedText $InfoRaw $InnerWidth).PadRight($InnerWidth, ' ')
-
-        [ATString]$InfoSegment = [ATString]@{
-            Prefix = [ATStringPrefix]@{
-                ForegroundColor = [ATForegroundColor24]::new([ColorLibrary]::BoomboxFooterStatus)
-                Coordinates     = [ATCoordinates]::new($InfoRow, $StartCol)
-            }
-            UserData   = "$($InfoPadded)"
-            UseATReset = $true
-        }
-
-        Write-Host "$($SwatchLine.ToAnsiControlSequenceString())$($InfoSegment.ToAnsiControlSequenceString())" -NoNewline
+        Write-Host "$($SwatchLine.ToAnsiControlSequenceString())" -NoNewline
 
         $this.SwatchInfoDirty = $false
     }

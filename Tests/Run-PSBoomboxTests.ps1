@@ -1257,6 +1257,22 @@ If($null -NE $ModuleScope) {
             Assert-True ($Core.ThemeModal -IS [UITabContainer]) 'ThemeModal must inherit UITabContainer'
             Assert-Equal $Core.ThemeModal.TabGroup.Tabs.Count 2 'ThemeModal must have 2 tabs (Dark and Light)'
             Assert-Equal $Core.ThemeModal.ActivePageIndex 0 'Dark tab active initially for PSBoombox Default'
+            Assert-True ($null -EQ $Core.ThemeModal.PSObject.Properties['DarkApplyButton']) 'ThemeModal must not expose DarkApplyButton'
+            Assert-True ($null -EQ $Core.ThemeModal.PSObject.Properties['DarkCancelButton']) 'ThemeModal must not expose DarkCancelButton'
+            Assert-True ($null -EQ $Core.ThemeModal.PSObject.Properties['LightApplyButton']) 'ThemeModal must not expose LightApplyButton'
+            Assert-True ($null -EQ $Core.ThemeModal.PSObject.Properties['LightCancelButton']) 'ThemeModal must not expose LightCancelButton'
+            Assert-Equal $Core.ThemeModal.DarkPanel.UiElementListing.Count 1 'ThemeModal DarkPanel must only contain DarkList'
+            Assert-Equal $Core.ThemeModal.LightPanel.UiElementListing.Count 1 'ThemeModal LightPanel must only contain LightList'
+            Assert-Equal $Core.ThemeModal.DarkList.DrawCoordinates.Row.Value ($Core.ThemeModal.LeftTop.Row.Value + 2) 'ThemeModal DarkList must have 1 blank padding row below top border'
+            Assert-Equal $Core.ThemeModal.LightList.DrawCoordinates.Row.Value ($Core.ThemeModal.LeftTop.Row.Value + 2) 'ThemeModal LightList must have 1 blank padding row below top border'
+            $Core.ThemeModal.Resize(100, 30)
+            Assert-Equal $Core.ThemeModal.DarkList.DrawCoordinates.Row.Value ($Core.ThemeModal.LeftTop.Row.Value + 2) 'ThemeModal Resize must preserve 1 blank padding row above DarkList'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Tab, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True $Core.ThemeModal.TabGroupFocused 'Tab in ThemeModal must move focus to TabGroup'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-False $Core.ThemeModal.TabGroupFocused 'DownArrow from TabGroup must return focus to ThemeList'
 
             # PRESS DOWNARROW -> LIVE PREVIEW CATPPUCCIN MOCHA (#1E1E2E)
             $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))

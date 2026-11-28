@@ -133,7 +133,7 @@ Class UIHelpModal : UITabContainer {
             [UIHelpModal]::MakeShortcutRow('Up / Down', 'Browse and live-preview themes'),
             [UIHelpModal]::MakeShortcutRow('PgUp / PgDn', 'Scroll theme list one page'),
             [UIHelpModal]::MakeShortcutRow('Home / End', 'Jump to first / last theme in tab'),
-            [UIHelpModal]::MakeShortcutRow('Tab / Shift+Tab', 'Cycle focus: Tabs, Theme List, Apply, Cancel'),
+            [UIHelpModal]::MakeShortcutRow('Tab / Shift+Tab', 'Cycle focus between Tabs and Theme List'),
             [UIHelpModal]::MakeShortcutRow('Enter', 'Apply selected theme and persist to config'),
             [UIHelpModal]::MakeShortcutRow('Esc', 'Cancel and revert to previous theme')
         ), $Bounds)

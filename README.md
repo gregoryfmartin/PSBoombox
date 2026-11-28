@@ -434,6 +434,6 @@ The configuration is organized into grouped sections:
 | --- | --- |
 | `Left` / `Right` | Switch between **Dark** and **Light** tabs *(previews immediately)* |
 | `Up` / `Down` (`PageUp`/`PageDown`/`Home`/`End`) | Browse themes in the active tab *(previews immediately across entire UI)* |
-| `Tab` / `Shift+Tab` | Move focus across Tabs, Theme List, `[ Apply ]`, and `[ Cancel ]` |
+| `Tab` / `Shift+Tab` | Toggle focus between Tabs and Theme List |
 | `Enter` | Apply selected theme and persist to `%APPDATA%\PSBoombox\config.json` |
 | `Esc` | Cancel selection and revert back to the active theme |
