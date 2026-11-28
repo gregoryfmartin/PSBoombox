@@ -1,4 +1,4 @@
-using namespace System
+﻿using namespace System
 using namespace System.Collections.Generic
 using namespace System.IO
 
@@ -391,6 +391,22 @@ If($null -NE $ModuleScope) {
             $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Tab, $false, $false, $false))
             $Core.Logic(0.033)
             Assert-Equal $Core.ActiveFocusZone ([BoomboxFocusZone]::PlaybackControls) 'Tab switches to PlaybackControls'
+
+            # TRANSPORT UNICODE GLYPHS AND NON-OVERLAPPING ROW-4 LAYOUT
+            Assert-Equal $Core.PlaybackPanel.PrevButton.LabelText "|`u{25C0}" 'PrevButton must use |◀ Unicode glyph'
+            Assert-Equal $Core.PlaybackPanel.PlayPauseButton.LabelText "`u{25B6}" 'PlayPauseButton must use ▶ Unicode glyph when stopped'
+            Assert-Equal $Core.PlaybackPanel.StopButton.LabelText "`u{25A0}" 'StopButton must use ■ Unicode glyph'
+            Assert-Equal $Core.PlaybackPanel.NextButton.LabelText "`u{25B6}|" 'NextButton must use ▶| Unicode glyph'
+            Foreach($TestWidth in @(80, 100)) {
+                $Core.PlaybackPanel.Resize($TestWidth)
+                [UIPlaybackControlPanel]$P = $Core.PlaybackPanel
+                Assert-True (($P.PrevButton.DrawCoordinates.Column.Value + $P.PrevButton.MaxRenderedLength) -LE $P.PlayPauseButton.DrawCoordinates.Column.Value) "PrevButton overlaps PlayPauseButton at width $TestWidth"
+                Assert-True (($P.PlayPauseButton.DrawCoordinates.Column.Value + $P.PlayPauseButton.MaxRenderedLength) -LE $P.StopButton.DrawCoordinates.Column.Value) "PlayPauseButton overlaps StopButton at width $TestWidth"
+                Assert-True (($P.StopButton.DrawCoordinates.Column.Value + $P.StopButton.MaxRenderedLength) -LE $P.NextButton.DrawCoordinates.Column.Value) "StopButton overlaps NextButton at width $TestWidth"
+                Assert-True (($P.NextButton.DrawCoordinates.Column.Value + $P.NextButton.MaxRenderedLength) -LE $P.RepeatButton.DrawCoordinates.Column.Value) "NextButton overlaps RepeatButton at width $TestWidth"
+                Assert-True (($P.RepeatButton.DrawCoordinates.Column.Value + $P.RepeatButton.MaxRenderedLength) -LE $P.ShuffleButton.DrawCoordinates.Column.Value) "RepeatButton overlaps ShuffleButton at width $TestWidth"
+                Assert-True (($P.ShuffleButton.DrawCoordinates.Column.Value + $P.ShuffleButton.MaxRenderedLength) -LE $P.VolumeControl.DrawCoordinates.Column.Value) "ShuffleButton overlaps VolumeControl at width $TestWidth"
+            }
 
             $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'g', [ConsoleKey]::G, $false, $false, $false))
             $Core.Logic(0.033)
@@ -1516,11 +1532,17 @@ If($null -NE $ModuleScope) {
             $Core.PlayTrack($Core.Playlist.GetCurrentTrack())
             Assert-Equal $CoreEvents.Count 1 'Re-playing current track must be suppressed'
 
-            # PAUSE / RESUME -> NO TOAST OR DISMISS
+            # PAUSE / RESUME -> NO TOAST OR DISMISS (ALSO VERIFY ▶ / ‖ BUTTON GLYPH TOGGLE)
+            $Core.PlaybackPanel.SyncFromPlayer($Core.MediaPlayer, $Core.Playlist)
+            Assert-Equal $Core.PlaybackPanel.PlayPauseButton.LabelText "`u{2016}" 'PlayPauseButton must show ‖ Unicode glyph while playing'
             $Core.TogglePlayPause()
             Assert-True ($Core.MediaPlayer.IsPaused()) 'Track should be paused'
+            $Core.PlaybackPanel.SyncFromPlayer($Core.MediaPlayer, $Core.Playlist)
+            Assert-Equal $Core.PlaybackPanel.PlayPauseButton.LabelText "`u{25B6}" 'PlayPauseButton must show ▶ Unicode glyph when paused'
             $Core.TogglePlayPause()
             Assert-True ($Core.MediaPlayer.IsPlaying()) 'Track should be resumed'
+            $Core.PlaybackPanel.SyncFromPlayer($Core.MediaPlayer, $Core.Playlist)
+            Assert-Equal $Core.PlaybackPanel.PlayPauseButton.LabelText "`u{2016}" 'PlayPauseButton must return to ‖ Unicode glyph when resumed'
             Assert-Equal $CoreEvents.Count 1 'Pause/Resume must not trigger notifications'
 
             # MODE CHANGE (EQUALIZER MODAL OPEN/CLOSE) -> NO TOAST OR DISMISS

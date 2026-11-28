@@ -17,6 +17,12 @@ Set-StrictMode -Version Latest
 ###############################################################################
 
 Class UIPlaybackControlPanel : UIPanel {
+    Static [String]$PrevGlyph  = "|`u{25C0}"
+    Static [String]$PlayGlyph  = "`u{25B6}"
+    Static [String]$PauseGlyph = "`u{2016}"
+    Static [String]$StopGlyph  = "`u{25A0}"
+    Static [String]$NextGlyph  = "`u{25B6}|"
+
     [UILabel]$TrackPrefixLabel
     [UILabel]$TrackValueLabel
     [UILabel]$EqBadgeLabel
@@ -61,7 +67,7 @@ Class UIPlaybackControlPanel : UIPanel {
         [Int]$ScrubberWidth = [Math]::Max(12, ($SafeWidth - 28))
         $this.Scrubber      = [UITrackProgressBar]::new([ATCoordinates]::new(3, 11), $ScrubberWidth)
 
-        $this.PrevButton = [UIButton]::new('|<', [ATCoordinates]::new(4, 3), {
+        $this.PrevButton = [UIButton]::new([UIPlaybackControlPanel]::PrevGlyph, [ATCoordinates]::new(4, 3), {
             Param(
                 [Context]$ActionContext
             )
@@ -71,7 +77,7 @@ Class UIPlaybackControlPanel : UIPanel {
             }
         }.GetNewClosure())
 
-        $this.PlayPauseButton = [UIButton]::new('> Play', [ATCoordinates]::new(4, 10), {
+        $this.PlayPauseButton = [UIButton]::new([UIPlaybackControlPanel]::PlayGlyph, [ATCoordinates]::new(4, 10), {
             Param(
                 [Context]$ActionContext
             )
@@ -81,7 +87,7 @@ Class UIPlaybackControlPanel : UIPanel {
             }
         }.GetNewClosure())
 
-        $this.StopButton = [UIButton]::new('Stop', [ATCoordinates]::new(4, 21), {
+        $this.StopButton = [UIButton]::new([UIPlaybackControlPanel]::StopGlyph, [ATCoordinates]::new(4, 16), {
             Param(
                 [Context]$ActionContext
             )
@@ -91,7 +97,7 @@ Class UIPlaybackControlPanel : UIPanel {
             }
         }.GetNewClosure())
 
-        $this.NextButton = [UIButton]::new('>|', [ATCoordinates]::new(4, 30), {
+        $this.NextButton = [UIButton]::new([UIPlaybackControlPanel]::NextGlyph, [ATCoordinates]::new(4, 22), {
             Param(
                 [Context]$ActionContext
             )
@@ -101,7 +107,7 @@ Class UIPlaybackControlPanel : UIPanel {
             }
         }.GetNewClosure())
 
-        $this.RepeatButton = [UIButton]::new('Rpt:Off', [ATCoordinates]::new(4, 37), {
+        $this.RepeatButton = [UIButton]::new('Rpt:Off', [ATCoordinates]::new(4, 29), {
             Param(
                 [Context]$ActionContext
             )
@@ -111,7 +117,7 @@ Class UIPlaybackControlPanel : UIPanel {
             }
         }.GetNewClosure())
 
-        $this.ShuffleButton = [UIButton]::new('Shf:Off', [ATCoordinates]::new(4, 49), {
+        $this.ShuffleButton = [UIButton]::new('Shf:Off', [ATCoordinates]::new(4, 41), {
             Param(
                 [Context]$ActionContext
             )
@@ -122,7 +128,7 @@ Class UIPlaybackControlPanel : UIPanel {
         }.GetNewClosure())
 
         [Int]$VolBarWidth   = ($SafeWidth -GE 92) ? 10 : 6
-        [Int]$VolCol        = [Math]::Max(61, ($SafeWidth - ($VolBarWidth + 11)))
+        [Int]$VolCol        = [Math]::Max(53, ($SafeWidth - ($VolBarWidth + 11)))
         $this.VolumeControl = [UIVolumeControl]::new([ATCoordinates]::new(4, $VolCol), 70, 5, $VolBarWidth)
 
         $this.UiElementListing[0]  = $this.TrackPrefixLabel
@@ -161,13 +167,13 @@ Class UIPlaybackControlPanel : UIPanel {
 
         $this.PrevButton.SetCoordinates([ATCoordinates]::new(4, 3))
         $this.PlayPauseButton.SetCoordinates([ATCoordinates]::new(4, 10))
-        $this.StopButton.SetCoordinates([ATCoordinates]::new(4, 21))
-        $this.NextButton.SetCoordinates([ATCoordinates]::new(4, 30))
-        $this.RepeatButton.SetCoordinates([ATCoordinates]::new(4, 37))
-        $this.ShuffleButton.SetCoordinates([ATCoordinates]::new(4, 49))
+        $this.StopButton.SetCoordinates([ATCoordinates]::new(4, 16))
+        $this.NextButton.SetCoordinates([ATCoordinates]::new(4, 22))
+        $this.RepeatButton.SetCoordinates([ATCoordinates]::new(4, 29))
+        $this.ShuffleButton.SetCoordinates([ATCoordinates]::new(4, 41))
 
         [Int]$VolBarWidth = ($SafeWidth -GE 92) ? 10 : 6
-        [Int]$VolCol      = [Math]::Max(61, ($SafeWidth - ($VolBarWidth + 11)))
+        [Int]$VolCol      = [Math]::Max(53, ($SafeWidth - ($VolBarWidth + 11)))
 
         $this.VolumeControl.SetLayout([ATCoordinates]::new(4, $VolCol), $VolBarWidth)
         $this.SetAllElementsDirty()
@@ -232,14 +238,14 @@ Class UIPlaybackControlPanel : UIPanel {
         [PlaybackState]$State     = $Player.GetPlaybackState()
         [String]$BadgeText       = '[STOPPED]'
         [TrueColor]$BadgeColor   = [ColorLibrary]::BoomboxStatusStopped
-        [String]$PlayBtnText     = '> Play'
+        [String]$PlayBtnText     = [UIPlaybackControlPanel]::PlayGlyph
         [Boolean]$ShouldSpin     = $false
 
         Switch($State) {
             ([PlaybackState]::Playing) {
                 $BadgeText   = '[PLAYING]'
                 $BadgeColor  = [ColorLibrary]::BoomboxStatusPlaying
-                $PlayBtnText = '|| Pse'
+                $PlayBtnText = [UIPlaybackControlPanel]::PauseGlyph
                 $ShouldSpin  = $true
 
                 Break
@@ -248,7 +254,7 @@ Class UIPlaybackControlPanel : UIPanel {
             ([PlaybackState]::Paused) {
                 $BadgeText   = '[PAUSED] '
                 $BadgeColor  = [ColorLibrary]::BoomboxStatusPaused
-                $PlayBtnText = '> Play'
+                $PlayBtnText = [UIPlaybackControlPanel]::PlayGlyph
 
                 Break
             }
@@ -256,7 +262,7 @@ Class UIPlaybackControlPanel : UIPanel {
             ([PlaybackState]::Loading) {
                 $BadgeText   = '[LOADING]'
                 $BadgeColor  = [ColorLibrary]::BoomboxStatusPaused
-                $PlayBtnText = '> Play'
+                $PlayBtnText = [UIPlaybackControlPanel]::PlayGlyph
 
                 Break
             }
@@ -264,7 +270,7 @@ Class UIPlaybackControlPanel : UIPanel {
             ([PlaybackState]::Error) {
                 $BadgeText   = '[ERROR]  '
                 $BadgeColor  = [ColorLibrary]::BoomboxStatusError
-                $PlayBtnText = '> Play'
+                $PlayBtnText = [UIPlaybackControlPanel]::PlayGlyph
 
                 Break
             }
@@ -272,7 +278,7 @@ Class UIPlaybackControlPanel : UIPanel {
             Default {
                 $BadgeText   = '[STOPPED]'
                 $BadgeColor  = [ColorLibrary]::BoomboxStatusStopped
-                $PlayBtnText = '> Play'
+                $PlayBtnText = [UIPlaybackControlPanel]::PlayGlyph
 
                 Break
             }

@@ -137,7 +137,7 @@ Start-PSBoombox -Theme '.\my-custom-gogh-theme.json'
 
 The TUI divides the terminal into four coordinated regions plus centered modal overlays:
 
-1. **Playback Controls (Top Panel, Rows 1–5)**: Displays the active track title, compact equalizer badge (`[EQ:Off]` or `[EQ:<Preset>]`), state badge (`[STOPPED]`, `[LOADING]`, `[PLAYING]`, `[PAUSED]`, `[ERROR]`), animated braille activity indicator, seekable track progress bar (`MM:SS`), transport buttons (`|<`, `> Play`/`|| Pse`, `Stop`, `>|`, `Rpt:Off|All|One`, `Shf:Off|On`), and volume/mute indicator (`VOL`/`MUT`).
+1. **Playback Controls (Top Panel, Rows 1–5)**: Displays the active track title, compact equalizer badge (`[EQ:Off]` or `[EQ:<Preset>]`), state badge (`[STOPPED]`, `[LOADING]`, `[PLAYING]`, `[PAUSED]`, `[ERROR]`), animated braille activity indicator, seekable track progress bar (`MM:SS`), transport buttons (`|◀`, `▶`/`‖`, `■`, `▶|`, `Rpt:Off|All|One`, `Shf:Off|On`), and volume/mute indicator (`VOL`/`MUT`).
 2. **Directory Browser (Bottom-Left Panel)**: Shows the current path and media file count in the title bar (`Dir: <path> (<count>)`), color-coded by entry type:
    - `.. (Parent Directory)` *(orange)*
    - `[DIR] <Folder>` *(cyan)*
@@ -165,7 +165,7 @@ The TUI divides the terminal into four coordinated regions plus centered modal o
 
 Press `Tab` (or `Shift+Tab`) to cycle focus to the top **PSBoombox** panel (highlighted with a cyan border):
 
-- **Transport Row**: Use `Left` / `Right` to move between `|<`, `> Play` / `|| Pse`, `Stop`, `>|`, `Rpt:*`, `Shf:*`, and `VOL`. Press `Enter` or `Space` to trigger the focused button.
+- **Transport Row**: Use `Left` / `Right` to move between `|◀`, `▶` / `‖`, `■`, `▶|`, `Rpt:*`, `Shf:*`, and `VOL`. Press `Enter` or `Space` to trigger the focused button.
 - **Track Scrubber**: Press `Up` from any transport button to highlight the progress bar, then use `Left` / `Right` to seek backward or forward in **5-second** steps. Press `Down` to return to the transport row.
 - **Volume Control**: Move focus to `VOL` and press `Up` / `Down` (or press `+`, `-`, `M` globally from any pane) to adjust volume in **5%** increments or toggle mute (`MUT`). The bar renders green up to 80%, amber above 80%, and red when muted. If MCI per-alias volume commands are unavailable for a given format, `PSBoombox` falls back to Windows wave output volume and restores your original system wave level cleanly on exit.
 
@@ -379,11 +379,11 @@ The configuration is organized into grouped sections:
 
 | Focus Row / Control | Key | Action |
 | --- | --- | --- |
-| Transport Row (`|<` .. `VOL`) | `Left` / `Right` | Cycle focus across buttons and Volume control |
-| Transport Buttons (`|<` .. `Shf:*`) | `Up` | Move focus up to the Track Scrubber |
-| Transport Buttons (`|<` .. `Shf:*`) | `Enter` / `Space` | Activate focused button |
+| Transport Row (`|◀` .. `VOL`) | `Left` / `Right` | Cycle focus across buttons and Volume control |
+| Transport Buttons (`|◀` .. `Shf:*`) | `Up` | Move focus up to the Track Scrubber |
+| Transport Buttons (`|◀` .. `Shf:*`) | `Enter` / `Space` | Activate focused button |
 | Track Scrubber | `Left` / `Right` | Seek backward / forward by 5 seconds |
-| Track Scrubber | `Down` | Move focus down to `[ > Play ]` / `[ || Pse ]` |
+| Track Scrubber | `Down` | Move focus down to `[ ▶ ]` / `[ ‖ ]` |
 | Volume Control (`VOL`) | `Up` / `Down` | Adjust volume by ±5% *(M mutes)* |
 
 ### Modal Dialogs (`Go to Directory` / `Save Playlist`)
