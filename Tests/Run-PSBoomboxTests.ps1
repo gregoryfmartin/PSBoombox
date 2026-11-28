@@ -918,11 +918,11 @@ If($null -NE $ModuleScope) {
             Assert-Equal $Core.DirectoryPanel.RightBottom.Column.Value 120 'DirectoryPanel must occupy left 120 cols'
             Assert-Equal $Core.PlaylistPanel.LeftTop.Column.Value 121 'PlaylistPanel must start at col 121'
             Assert-Equal $Core.PlaylistPanel.RightBottom.Column.Value 240 'PlaylistPanel must end at col 240'
-            Assert-Equal $Core.DirectoryPanel.RightBottom.Row.Value 68 'DirectoryPanel must end at row 68'
-            Assert-Equal $Core.FooterPanel.StatusLabel.DrawCoordinates.Row.Value 69 'Footer StatusLabel must sit at row 69'
-            Assert-Equal $Core.FooterPanel.HintLabel.DrawCoordinates.Row.Value 70 'Footer HintLabel must sit at row 70'
+            Assert-Equal $Core.DirectoryPanel.RightBottom.Row.Value 69 'DirectoryPanel must end at row 69'
+            Assert-Equal $Core.FooterPanel.StatusLabel.DrawCoordinates.Row.Value 70 'Footer StatusLabel must sit at row 70'
+            Assert-Equal $Core.PlaylistPanel.RightBottom.Row.Value 69 'PlaylistPanel must reclaim row 69'
             Assert-Equal $Core.VisualizerCanvas.Width 240 'VisualizerCanvas must expand uncapped to 240 width'
-            Assert-Equal $Core.VisualizerCanvas.Height 68 'VisualizerCanvas must expand to 68 rows'
+            Assert-Equal $Core.VisualizerCanvas.Height 69 'VisualizerCanvas must expand to 69 rows'
             Assert-True ($Core.PathModal.Width -LE 78) 'PathModal width remains capped <= 78'
             Assert-True ($Core.EqualizerModal.Width -LE 78) 'EqualizerModal width remains capped <= 78'
             Assert-True ($Core.NoticeModal.Width -LE 72) 'NoticeModal width remains capped <= 72'
@@ -1030,7 +1030,7 @@ If($null -NE $ModuleScope) {
             Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'Restoring 160x44 resumes PBStateVisualizer'
             Assert-Equal $Core.TargetFps 60 'Visualizer TargetFps restored to 60 on resume'
             Assert-Equal $Core.VisualizerCanvas.Width 160 'VisualizerCanvas resized to 160 on resume'
-            Assert-Equal $Core.VisualizerCanvas.Height 42 'VisualizerCanvas resized to 42 on resume'
+            Assert-Equal $Core.VisualizerCanvas.Height 43 'VisualizerCanvas resized to 43 on resume'
 
             $Core.SetSimulatedViewport(45, 12)
             $Core.Logic(0.033)
@@ -1870,6 +1870,268 @@ Export-ModuleMember -Function 'New-BurntToastNotification', 'Remove-BTNotificati
             [PBConfigService]::ConfigDirectoryOverride = $PrevAppCfg
             Remove-Item -Path $ModalCfgDir -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -Path $ModalMediaDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    & $InvokeCase -Name 'Tabbed F1 Help Modal and Reclaimed Hint Rows' -Body {
+        [String]$HelpCfgDir   = Join-Path ([Path]::GetTempPath()) "PSBoombox_HelpCfg_$([Guid]::NewGuid().ToString('N'))"
+        [String]$HelpMediaDir = Join-Path ([Path]::GetTempPath()) "PSBoombox_HelpTest_$([Guid]::NewGuid().ToString('N'))"
+        $null = New-Item -Path $HelpCfgDir -ItemType Directory -Force
+        $null = New-Item -Path $HelpMediaDir -ItemType Directory -Force
+
+        [String]$PrevHelpCfgOverride = [PBConfigService]::ConfigDirectoryOverride
+        [PBConfigService]::ConfigDirectoryOverride = $HelpCfgDir
+
+        Try {
+            New-TestWavFile -FilePath (Join-Path $HelpMediaDir 'help_track.wav') -DurationMs 1500
+
+            [BoomboxCore]$Core = [BoomboxCore]::new($HelpMediaDir, '')
+            $Core.SetSimulatedViewport(80, 24)
+            $Core.InitializeStates()
+            $Core.Logic(0.016)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Core must reach PBStateMainPlayer'
+
+            # 1. VERIFY HINT REMOVAL & RECLAIMED ROWS ACROSS ALL 4 MODES
+            Assert-True ($null -EQ $Core.FooterPanel.PSObject.Properties['HintLabel']) 'UIStatusFooterPanel must not expose HintLabel'
+            Assert-True ($null -EQ $Core.PSObject.Properties['VisualizerHintLabel']) 'BoomboxCore must not expose VisualizerHintLabel'
+            Assert-Equal $Core.FooterPanel.StatusLabel.DrawCoordinates.Row.Value 24 'Footer StatusLabel must sit at row 24 (LayoutHeight)'
+            Assert-Equal $Core.DirectoryPanel.RightBottom.Row.Value 23 'DirectoryPanel must extend to row 23'
+            Assert-Equal $Core.PlaylistPanel.RightBottom.Row.Value 23 'PlaylistPanel must extend to row 23'
+            Assert-Equal $Core.VisualizerCanvas.Height 23 'VisualizerCanvas must reclaim row to height 23'
+            Assert-Equal $Core.VisualizerTrackLabel.DrawCoordinates.Row.Value 24 'VisualizerTrackLabel must sit at row 24'
+            Assert-Equal $Core.EqualizerModal.Height 15 'EqualizerModal height must shrink to 15'
+            Assert-Equal $Core.ThemeModal.Height 14 'ThemeModal height must shrink to 14'
+
+            # 2. CLEAN NON-INSTRUCTIONAL FOOTER STATUS ON EQUALIZER / THEMES & F1 IGNORED OUTSIDE MAIN
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'e', [ConsoleKey]::E, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateEqualizer' 'E opens Equalizer'
+            Assert-Equal $Core.FooterPanel.StatusLabel.UserData.TrimEnd() 'Status: Equalizer' 'Equalizer status must have no instructional text'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::F1, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateEqualizer' 'F1 must not open Help from Equalizer mode'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Escape closes Equalizer'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'t', [ConsoleKey]::T, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateThemeSelector' 'T opens Theme Selector'
+            Assert-False ($Core.FooterPanel.StatusLabel.UserData.Contains('Enter to apply')) 'Theme preview status must have no instructional text'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::F1, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateThemeSelector' 'F1 must not open Help from Theme Selector mode'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Escape closes Theme Selector'
+
+            # START TRACK -> ENTER VISUALIZER -> VERIFY F1 IGNORED IN VISUALIZER
+            $Core.PlayTrack($Core.Playlist.SelectIndex(0))
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'V opens Visualizer'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::F1, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateVisualizer' 'F1 must not open Help from Visualizer mode'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'v', [ConsoleKey]::V, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'V returns to MainPlayer'
+
+            # 3. H CONTINUES TO TOGGLE SHUFFLE IN MAINPLAYER
+            Assert-False $Core.Playlist.ShuffleEnabled 'Shuffle defaults to false'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]'h', [ConsoleKey]::H, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-True $Core.Playlist.ShuffleEnabled 'H must still toggle Shuffle On'
+
+            # 4. F1 OPENS TABBED HELP MODAL IN MAINPLAYER, TABS & SCROLL & RESIZE & CLOSE
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::F1, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateHelp' 'F1 must open PBStateHelp from MainPlayer'
+            Assert-True ($Core.HelpModal -IS [UITabContainer]) 'HelpModal must inherit UITabContainer'
+            Assert-Equal $Core.HelpModal.TabGroup.Tabs.Count 5 'HelpModal must expose 5 tabs'
+            Assert-Equal $Core.HelpModal.TabGroup.Tabs[0].LabelText 'Global' 'Tab 0 must be Global'
+            Assert-Equal $Core.HelpModal.TabGroup.Tabs[1].LabelText 'Playback' 'Tab 1 must be Playback'
+            Assert-Equal $Core.HelpModal.TabGroup.Tabs[2].LabelText 'Viz' 'Tab 2 must be Viz'
+            Assert-Equal $Core.HelpModal.TabGroup.Tabs[3].LabelText 'EQ' 'Tab 3 must be EQ'
+            Assert-Equal $Core.HelpModal.TabGroup.Tabs[4].LabelText 'Themes' 'Tab 4 must be Themes'
+            Assert-Equal $Core.HelpModal.ActivePageIndex 0 'HelpModal must open on Global tab'
+            Assert-Equal $Core.HelpModal.ContentTopRow ($Core.HelpModal.LeftTop.Row.Value + 2) 'HelpModal must have 1 blank padding row below top border'
+            Assert-True ($null -EQ $Core.HelpModal.PSObject.Properties['CloseButtons']) 'HelpModal must not expose CloseButtons'
+            Assert-Equal $Core.HelpModal.GetActiveContentPanel().UiElementListing.Count 0 'HelpModal tab panels must not contain a Close button'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Tab, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 1 'Tab in HelpModal must advance to next tab when Close button is removed'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Tab, $true, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 0 'Shift+Tab in HelpModal must cycle back to previous tab'
+            [UITab]$LastHelpTab = $Core.HelpModal.TabGroup.Tabs[4]
+            Assert-True (($LastHelpTab.DrawCoordinates.Column.Value + $LastHelpTab.GetRenderedWidth() - 1) -LT $Core.HelpModal.RightBottom.Column.Value) 'All 5 Help tabs must fit inside 80-col modal width'
+
+            # RIGHTARROW CYCLES ALL 5 TABS AND WRAPS; LEFTARROW WRAPS BACK
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 1 'RightArrow switches to Playback tab'
+
+            # VERIFY PLAYBACK TAB STRUCTURED SECTIONS & READ-ONLY SCROLLING WITH ARROWS
+            [System.Collections.Generic.List[Hashtable]]$PbRows = $Core.HelpModal.GetActiveRows()
+            Assert-True (($PbRows | Where-Object { $_.Kind -EQ 'Header' }).Count -EQ 4) 'Playback tab must define 4 styled section headers'
+            Assert-True (($PbRows | Where-Object { $_.Kind -EQ 'Blank' }).Count -EQ 3) 'Playback tab must separate sections with blank rows'
+            Assert-True ($Core.HelpModal.ActivePageHasOverflow()) 'Playback tab must overflow at 80x24'
+            Assert-False ($Core.HelpModal.ActivePageCanScrollUp()) 'Playback tab at top cannot scroll up'
+            Assert-True ($Core.HelpModal.ActivePageCanScrollDown()) 'Playback tab at top can scroll down'
+
+            [String]$PbTopAnsi = $Core.HelpModal.BuildActivePageContentAnsi()
+            Assert-True ($PbTopAnsi.Contains("`u{25BC}")) 'Overflowing Help page at top must render down arrow'
+            Assert-False ($PbTopAnsi.Contains("`u{25B2}")) 'Overflowing Help page at top must not render up arrow'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::DownArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal ($Core.HelpModal.GetActiveScrollOffset()) 1 'DownArrow scrolls active Help page down by 1'
+            [String]$PbMidAnsi = $Core.HelpModal.BuildActivePageContentAnsi()
+            Assert-True ($PbMidAnsi.Contains("`u{25B2}") -AND $PbMidAnsi.Contains("`u{25BC}")) 'Scrolled middle Help page must render both up and down arrows'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::End, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal ($Core.HelpModal.GetActiveScrollOffset()) ($Core.HelpModal.GetActiveMaxScrollOffset()) 'End jumps Help page to bottom'
+            [String]$PbEndAnsi = $Core.HelpModal.BuildActivePageContentAnsi()
+            Assert-True ($PbEndAnsi.Contains("`u{25B2}")) 'Help page at bottom must render up arrow'
+            Assert-False ($PbEndAnsi.Contains("`u{25BC}")) 'Help page at bottom must not render down arrow'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::Home, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal ($Core.HelpModal.GetActiveScrollOffset()) 0 'Home jumps Help page back to top'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 2 'RightArrow switches to Viz tab'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 3 'RightArrow switches to EQ tab'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 4 'RightArrow switches to Themes tab'
+            Assert-False ($Core.HelpModal.ActivePageHasOverflow()) 'Themes tab fits without overflow at 80x24'
+            [String]$ThemesPageAnsi = $Core.HelpModal.BuildActivePageContentAnsi()
+            Assert-False ($ThemesPageAnsi.Contains("`u{25B2}") -OR $ThemesPageAnsi.Contains("`u{25BC}")) 'Non-overflowing Help page must omit scroll arrows'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::RightArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 0 'RightArrow wraps from Themes back to Global'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::LeftArrow, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.HelpModal.ActivePageIndex 4 'LeftArrow wraps from Global back to Themes'
+
+            # BUFFER TOO SMALL SUSPEND / RESUME FOR PBSTATEHELP
+            $Core.SetSimulatedViewport(70, 20)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateBufferTooSmall' 'Shrinking below 80x24 suspends PBStateHelp'
+            $Core.SetSimulatedViewport(100, 28)
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateHelp' 'Restoring >= 80x24 resumes PBStateHelp'
+
+            # ESC CLOSES HELP; F1 REOPENS AND F1 AGAIN CLOSES HELP
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]27, [ConsoleKey]::Escape, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'Esc closes Help back to MainPlayer'
+
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::F1, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateHelp' 'F1 reopens Help'
+            $Core.EnqueueSyntheticKey([ConsoleKeyInfo]::new([Char]0, [ConsoleKey]::F1, $false, $false, $false))
+            $Core.Logic(0.033)
+            Assert-Equal $Core.AppState.CurrentState 'PBStateMainPlayer' 'F1 inside Help closes back to MainPlayer'
+
+            $Core.Cleanup()
+        } Finally {
+            [PBConfigService]::ConfigDirectoryOverride = $PrevHelpCfgOverride
+            Remove-Item -Path $HelpCfgDir -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $HelpMediaDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    & $InvokeCase -Name 'List Selection Accent Background Highlight (No Chevron, Focus States, and Theme Adaptation)' -Body {
+        Try {
+            [ColorLibrary]::ResetSemanticDefaults()
+
+            # 1. NO SELECTION CHEVRON & RECLAIMED 2 COLUMNS ON NON-PLAYING ROWS
+            Assert-True ($null -EQ ([UIListItem] -AS [Type]).GetField('SelectionIndicator')) 'UIListItem must no longer define SelectionIndicator'
+
+            [UIList]$TestList = [UIList]::new([ATCoordinates]::new(2, 3), @('alpha.mp3', 'beta.mp3', 'gamma.mp3'), 5)
+            $TestList.SetMaxDisplayWidth(24)
+            $TestList.Activate($null)
+            $TestList.Focus($null)
+
+            [UIListItem]$SelectedItem   = $TestList.Items[0]
+            [UIListItem]$UnselectedItem = $TestList.Items[1]
+
+            Assert-False ($SelectedItem.UserData.Contains("`u{2771}")) 'Selected item must not display chevron glyph'
+            Assert-True ($SelectedItem.UserData.StartsWith('alpha.mp3')) 'Non-playing selected item must reclaim leading chevron columns'
+            Assert-True ($UnselectedItem.UserData.StartsWith('beta.mp3')) 'Non-playing unselected item must reclaim leading chevron columns'
+
+            # 2. PLAYING INDICATOR RETAINED
+            $UnselectedItem.SetPlaying($true)
+            Assert-True ($UnselectedItem.UserData.StartsWith("`u{25B6} beta.mp3")) 'Playing item must keep playing triangle prefix'
+
+            # 3. FOCUSED VS UNFOCUSED VS UNSELECTED BACKGROUND SEQUENCES
+            [String]$FocusedSelBgSeq = [ATBackgroundColor24]::new([ColorLibrary]::UIListItemSelectedBg).ToAnsiControlSequenceString()
+            [String]$UnfocSelBgSeq   = [ATBackgroundColor24]::new([ColorLibrary]::UIListItemSelectedUnfocusedBg).ToAnsiControlSequenceString()
+            [String]$NormalBgSeq     = [ATControlSequences]::GenerateThemeBgString()
+
+            Assert-True ($SelectedItem.ToAnsiControlSequenceString().Contains($FocusedSelBgSeq)) 'Focused selected item must emit UIListItemSelectedBg'
+            Assert-True ($UnselectedItem.ToAnsiControlSequenceString().Contains($NormalBgSeq)) 'Unselected item must emit ThemeBackground'
+
+            $TestList.Unfocus($null)
+            Assert-True ($SelectedItem.ToAnsiControlSequenceString().Contains($UnfocSelBgSeq)) 'Unfocused selected item must emit UIListItemSelectedUnfocusedBg'
+
+            # 4. THEME ADAPTATION & CONTRAST ACROSS DARK AND LIGHT THEMES
+            [UIThemeService]$ThemeSvc = [UIThemeService]::new()
+            $SelectedItem.SetCustomActiveColor([ColorLibrary]::BoomboxDirEntry)
+            $TestList.Focus($null)
+
+            Assert-True ($ThemeSvc.ApplyThemeByNameOrPath('Catppuccin Mocha', $false)) 'Catppuccin Mocha theme must apply'
+            [String]$DarkSelBgHex = [ColorLibrary]::UIListItemSelectedBg.ToHexString()
+            Assert-True ($DarkSelBgHex -NE [ColorLibrary]::ThemeBackground.ToHexString()) 'Dark theme selected bg must differ from ThemeBackground'
+            Assert-True (([TrueColor]::GetContrastRatio($SelectedItem.ResolveForegroundColor(), [ColorLibrary]::UIListItemSelectedBg)) -GE 4.5) 'Dark theme custom entry contrast >= 4.5 on selected bg'
+            Assert-True (([TrueColor]::GetContrastRatio($UnselectedItem.ResolveForegroundColor(), [ColorLibrary]::ThemeBackground)) -GE 3.0) 'Dark theme playing entry contrast >= 3.0'
+
+            Assert-True ($ThemeSvc.ApplyThemeByNameOrPath('Catppuccin Latte', $false)) 'Catppuccin Latte theme must apply'
+            [String]$LightSelBgHex = [ColorLibrary]::UIListItemSelectedBg.ToHexString()
+            Assert-True ($LightSelBgHex -NE $DarkSelBgHex) 'Light theme selected bg must adapt away from Dark theme bg'
+            Assert-True ($LightSelBgHex -NE [ColorLibrary]::ThemeBackground.ToHexString()) 'Light theme selected bg must differ from Light ThemeBackground'
+            Assert-True (([TrueColor]::GetContrastRatio($SelectedItem.ResolveForegroundColor(), [ColorLibrary]::UIListItemSelectedBg)) -GE 4.5) 'Light theme custom entry contrast >= 4.5 on selected bg'
+            # 5. ENDEMIC UILIST SCROLL INDICATORS (OVERFLOW VS NON-OVERFLOW)
+            Assert-False ($TestList.HasOverflow()) '3-item list in 5-row viewport must not overflow'
+            Assert-Equal ($TestList.GetEffectiveItemWidth()) 24 'Non-overflowing UIList preserves full MaxDisplayWidth'
+            [String]$NoOverflowAnsi = $TestList.ToAnsiControlSequenceString()
+            Assert-False ($NoOverflowAnsi.Contains("`u{25B2}") -OR $NoOverflowAnsi.Contains("`u{25BC}")) 'Non-overflowing UIList must omit scroll arrows'
+
+            [UIList]$OverflowList = [UIList]::new([ATCoordinates]::new(2, 3), @('item1', 'item2', 'item3', 'item4', 'item5', 'item6', 'item7', 'item8'), 4)
+            $OverflowList.SetMaxDisplayWidth(24)
+            $OverflowList.Activate($null)
+            $OverflowList.Focus($null)
+
+            Assert-True ($OverflowList.HasOverflow()) '8-item list in 4-row viewport must overflow'
+            Assert-Equal ($OverflowList.GetEffectiveItemWidth()) 22 'Overflowing UIList must reserve 2 cols for right-edge scroll gutter'
+            Assert-False ($OverflowList.CanScrollUp()) 'Overflowing UIList at top cannot scroll up'
+            Assert-True ($OverflowList.CanScrollDown()) 'Overflowing UIList at top can scroll down'
+            [String]$ListTopAnsi = $OverflowList.ToAnsiControlSequenceString()
+            Assert-True ($ListTopAnsi.Contains("`u{25BC}")) 'Overflowing UIList at top must emit down arrow'
+            Assert-False ($ListTopAnsi.Contains("`u{25B2}")) 'Overflowing UIList at top must not emit up arrow'
+
+            $OverflowList.SelectIndex(5)
+            Assert-True ($OverflowList.CanScrollUp()) 'Overflowing UIList in middle can scroll up'
+            Assert-True ($OverflowList.CanScrollDown()) 'Overflowing UIList in middle can scroll down'
+            [String]$ListMidAnsi = $OverflowList.ToAnsiControlSequenceString()
+            Assert-True ($ListMidAnsi.Contains("`u{25B2}") -AND $ListMidAnsi.Contains("`u{25BC}")) 'Overflowing UIList in middle must emit both arrows'
+
+            $OverflowList.MoveEnd()
+            Assert-True ($OverflowList.CanScrollUp()) 'Overflowing UIList at bottom can scroll up'
+            Assert-False ($OverflowList.CanScrollDown()) 'Overflowing UIList at bottom cannot scroll down'
+            [String]$ListEndAnsi = $OverflowList.ToAnsiControlSequenceString()
+            Assert-True ($ListEndAnsi.Contains("`u{25B2}")) 'Overflowing UIList at bottom must emit up arrow'
+            Assert-False ($ListEndAnsi.Contains("`u{25BC}")) 'Overflowing UIList at bottom must not emit down arrow'
+        } Finally {
+            [ColorLibrary]::ResetSemanticDefaults()
         }
     }
         } Finally {

@@ -73,7 +73,7 @@ Class PBStateEqualizer : SMState {
             $Core.EqualizerModal.Activate($Context)
             $Core.EqualizerModal.SetAllElementsDirty()
             $Core.EqualizerModal.FocusElementByKey(11, $Context)
-            $Core.FooterPanel.SetStatus('Equalizer: adjust bands with Arrow keys or press T to toggle On/Off')
+            $Core.FooterPanel.SetStatus('Equalizer')
         }
 
         $this.OnExit = {

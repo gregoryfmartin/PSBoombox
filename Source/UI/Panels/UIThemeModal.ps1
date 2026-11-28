@@ -21,12 +21,10 @@ Class UIThemeModal : UITabContainer {
     [UIList]$DarkList
     [UIButton]$DarkApplyButton
     [UIButton]$DarkCancelButton
-    [UILabel]$DarkHintLabel
     [UIPanel]$LightPanel
     [UIList]$LightList
     [UIButton]$LightApplyButton
     [UIButton]$LightCancelButton
-    [UILabel]$LightHintLabel
     [Boolean]$SuppressPreviewEvents
     [Boolean]$SwatchInfoDirty
     [ScriptBlock]$OnThemePreview
@@ -57,7 +55,6 @@ Class UIThemeModal : UITabContainer {
         [Int]$ListStartRow       = $Bounds.TopRow + 1
         [Int]$ContentCol         = $Bounds.LeftCol + 2
         [Int]$ButtonRow          = $Bounds.TopRow + 13
-        [Int]$HintRow            = $Bounds.TopRow + 14
 
         $this.DarkPanel = [UIPanel]::new()
         $this.DarkList  = [UIList]::new([ATCoordinates]::new($ListStartRow, $ContentCol), $null, 10)
@@ -104,13 +101,9 @@ Class UIThemeModal : UITabContainer {
             }
         }.GetNewClosure())
 
-        [String]$HintStr   = '[L/R] Tab [Up/Dn] Preview [Enter] Apply [Esc] Cancel'
-        $this.DarkHintLabel = [UILabel]::new($HintStr, [ATCoordinates]::new($HintRow, $ContentCol), [ColorLibrary]::BoomboxFooterHint, $InnerWidth)
-
         $this.DarkPanel.UiElementListing[0] = $this.DarkList
         $this.DarkPanel.UiElementListing[1] = $this.DarkApplyButton
         $this.DarkPanel.UiElementListing[2] = $this.DarkCancelButton
-        $this.DarkPanel.UiElementListing[3] = $this.DarkHintLabel
 
         $this.LightPanel = [UIPanel]::new()
         $this.LightList  = [UIList]::new([ATCoordinates]::new($ListStartRow, $ContentCol), $null, 10)
@@ -157,12 +150,9 @@ Class UIThemeModal : UITabContainer {
             }
         }.GetNewClosure())
 
-        $this.LightHintLabel = [UILabel]::new($HintStr, [ATCoordinates]::new($HintRow, $ContentCol), [ColorLibrary]::BoomboxFooterHint, $InnerWidth)
-
         $this.LightPanel.UiElementListing[0] = $this.LightList
         $this.LightPanel.UiElementListing[1] = $this.LightApplyButton
         $this.LightPanel.UiElementListing[2] = $this.LightCancelButton
-        $this.LightPanel.UiElementListing[3] = $this.LightHintLabel
 
         $this.OnPageChanged = {
             Param(
@@ -181,8 +171,8 @@ Class UIThemeModal : UITabContainer {
         [Int]$LayoutHeight
     ) {
         [Int]$ModalWidth  = [Math]::Clamp(($LayoutWidth - 14), 58, 66)
-        [Int]$ModalHeight = 15
-        [Int]$MaxTopRow   = [Math]::Max(6, ($LayoutHeight - 3 - $ModalHeight))
+        [Int]$ModalHeight = 14
+        [Int]$MaxTopRow   = [Math]::Max(6, ($LayoutHeight - 2 - $ModalHeight))
         [Int]$RawTopRow   = [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2)
         [Int]$TopRow      = [Math]::Clamp($RawTopRow, 6, $MaxTopRow)
         [Int]$LeftCol     = [Math]::Max(2, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
@@ -213,17 +203,14 @@ Class UIThemeModal : UITabContainer {
         [Int]$ListStartRow = $Bounds.TopRow + 1
         [Int]$ContentCol   = $Bounds.LeftCol + 2
         [Int]$ButtonRow    = $Bounds.TopRow + 13
-        [Int]$HintRow      = $Bounds.TopRow + 14
 
         $this.DarkList.SetLayout([ATCoordinates]::new($ListStartRow, $ContentCol), 10, $InnerWidth)
         $this.DarkApplyButton.SetCoordinates([ATCoordinates]::new($ButtonRow, $ContentCol))
         $this.DarkCancelButton.SetCoordinates([ATCoordinates]::new($ButtonRow, ($ContentCol + 12)))
-        $this.DarkHintLabel.SetLayout([ATCoordinates]::new($HintRow, $ContentCol), $InnerWidth)
 
         $this.LightList.SetLayout([ATCoordinates]::new($ListStartRow, $ContentCol), 10, $InnerWidth)
         $this.LightApplyButton.SetCoordinates([ATCoordinates]::new($ButtonRow, $ContentCol))
         $this.LightCancelButton.SetCoordinates([ATCoordinates]::new($ButtonRow, ($ContentCol + 12)))
-        $this.LightHintLabel.SetLayout([ATCoordinates]::new($HintRow, $ContentCol), $InnerWidth)
 
         $this.MarkAllDirtyForThemeChange()
     }

@@ -36,7 +36,6 @@ Class PBStateVisualizer : SMState {
                 $Core.SyncVisualizerTrackLabel()
 
                 $Core.VisualizerTrackLabel.Dirty = $true
-                $Core.VisualizerHintLabel.Dirty  = $true
 
                 Return
             }
@@ -62,11 +61,9 @@ Class PBStateVisualizer : SMState {
             }
 
             $Core.VisualizerTrackLabel.Activate($Context)
-            $Core.VisualizerHintLabel.Activate($Context)
             $Core.SyncVisualizerTrackLabel()
 
             $Core.VisualizerTrackLabel.Dirty = $true
-            $Core.VisualizerHintLabel.Dirty  = $true
         }
 
         $this.OnExit = {
@@ -85,7 +82,6 @@ Class PBStateVisualizer : SMState {
             }
 
             $Core.VisualizerTrackLabel.Deactivate($Context)
-            $Core.VisualizerHintLabel.Deactivate($Context)
 
             If([Console]::IsOutputRedirected -EQ $false) {
                 $Core.PendingScreenClear = $true
@@ -226,7 +222,6 @@ Class PBStateVisualizer : SMState {
             $Context.References[[SMState]::ContextKeysPressed] = $EmptyKeys
 
             $Core.VisualizerTrackLabel.Update($Context)
-            $Core.VisualizerHintLabel.Update($Context)
 
             If($null -NE $KeysPressed) {
                 $Context.References[[SMState]::ContextKeysPressed] = $KeysPressed
@@ -253,11 +248,6 @@ Class PBStateVisualizer : SMState {
             If($Core.VisualizerTrackLabel.Dirty -EQ $true) {
                 $TrailingAnsi                     += $Core.VisualizerTrackLabel.ToAnsiControlSequenceString()
                 $Core.VisualizerTrackLabel.Dirty   = $false
-            }
-
-            If($Core.VisualizerHintLabel.Dirty -EQ $true) {
-                $TrailingAnsi                    += $Core.VisualizerHintLabel.ToAnsiControlSequenceString()
-                $Core.VisualizerHintLabel.Dirty   = $false
             }
 
             If($Core.PendingScreenClear -EQ $true) {

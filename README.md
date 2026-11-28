@@ -142,9 +142,9 @@ The TUI divides the terminal into four coordinated regions plus centered modal o
    - `.. (Parent Directory)` *(orange)*
    - `[DIR] <Folder>` *(cyan)*
    - `≡ <Playlist>` *(purple)*
-   - `♪ <Audio File>` *(white; turns green with `▶` when playing, yellow with `❱` when selected)*
+   - `♪ <Audio File>` *(white; turns green with `▶` when playing, highlighted with a theme accent background when selected)*
 3. **Playlist (Bottom-Right Panel)**: Shows the active playlist name (when loaded/saved) and track count, with `01.` zero-padded track numbering and a green `▶` marker on the active track.
-4. **Status & Hint Footer (Bottom Two Rows)**: Displays the latest action status or error message on row 1 and quick keybinding hints on row 2.
+4. **Status Footer (Bottom Row)**: Displays the latest action status or error message on the bottom row (press `F1` from the main screen for the tabbed Help menu).
 
 ---
 
@@ -334,6 +334,7 @@ The configuration is organized into grouped sections:
 
 | Key | Action |
 | --- | --- |
+| `F1` | Open tabbed **Help** dialog (`Global`, `Playback`, `Viz`, `EQ`, `Themes`) |
 | `Tab` / `Shift+Tab` | Cycle focus pane (`Directory Browser` ↔ `Playlist` ↔ `Playback Controls`) |
 | `Space` | Toggle Play / Pause *(when focused on a Playback Control button, activates that button)* |
 | `N` / `P` | Play Next / Previous track |

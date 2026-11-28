@@ -43,12 +43,12 @@ Class BoomboxCore : AppCore {
     [UIPathInputModal]$PathModal
     [UIEqualizerModal]$EqualizerModal
     [UIThemeModal]$ThemeModal
+    [UIHelpModal]$HelpModal
     [UINoticeModal]$NoticeModal
     [UIVisualizerCanvas]$VisualizerCanvas
     [List[UIVisualizerBase]]$Visualizers
     [Int]$ActiveVisualizerIndex
     [UILabel]$VisualizerTrackLabel
-    [UILabel]$VisualizerHintLabel
     [UIStatusFooterPanel]$FooterPanel
     [BoomboxFocusZone]$ActiveFocusZone
     [Boolean]$AutoFocusPlaylistOnStart
@@ -171,7 +171,7 @@ Class BoomboxCore : AppCore {
 
     [Void]ResizeUiComponents() {
         [Int]$BottomTopRow  = 6
-        [Int]$BottomEndRow  = $this.LayoutHeight - 2
+        [Int]$BottomEndRow  = $this.LayoutHeight - 1
         [Int]$LeftPaneWidth = [Int][Math]::Floor($this.LayoutWidth / 2)
 
         $this.PlaybackPanel.Resize($this.LayoutWidth)
@@ -180,11 +180,11 @@ Class BoomboxCore : AppCore {
         $this.PathModal.Resize($this.LayoutWidth, $this.LayoutHeight)
         $this.EqualizerModal.Resize($this.LayoutWidth, $this.LayoutHeight)
         $this.ThemeModal.Resize($this.LayoutWidth, $this.LayoutHeight)
+        $this.HelpModal.Resize($this.LayoutWidth, $this.LayoutHeight)
         $this.NoticeModal.Resize($this.LayoutWidth, $this.LayoutHeight)
-        $this.VisualizerCanvas.Initialize($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 2)), 1, 1)
-        $this.VisualizerTrackLabel.SetLayout([ATCoordinates]::new(($this.LayoutHeight - 1), 2), [Math]::Max(20, ($this.LayoutWidth - 2)))
-        $this.VisualizerHintLabel.SetLayout([ATCoordinates]::new($this.LayoutHeight, 2), [Math]::Max(20, ($this.LayoutWidth - 2)))
-        $this.FooterPanel.Resize(($this.LayoutHeight - 1), $this.LayoutWidth)
+        $this.VisualizerCanvas.Initialize($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 1)), 1, 1)
+        $this.VisualizerTrackLabel.SetLayout([ATCoordinates]::new($this.LayoutHeight, 2), [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.FooterPanel.Resize($this.LayoutHeight, $this.LayoutWidth)
         $this.SyncAllPanelsFromState()
         $this.SyncVisualizerTrackLabel()
     }
@@ -262,7 +262,6 @@ Class BoomboxCore : AppCore {
                     $this.IsSuspendedForResize = $false
 
                     $this.VisualizerTrackLabel.Deactivate($Context)
-                    $this.VisualizerHintLabel.Deactivate($Context)
                     $this.FooterPanel.SetStatus('Playback stopped. Returned to Playlist Mode.')
                     $this.AppState.Trigger('Resume_PBStateMainPlayer', $Context)
 
@@ -271,7 +270,6 @@ Class BoomboxCore : AppCore {
                     $this.IsSuspendedForResize = $false
 
                     $this.VisualizerTrackLabel.Deactivate($Context)
-                    $this.VisualizerHintLabel.Deactivate($Context)
                     $this.OpenMidiVisualizerNotice($Context, 'Resume_PBStateNoticeModal')
 
                     Return
@@ -294,7 +292,7 @@ Class BoomboxCore : AppCore {
 
     [Void]InitializeUiComponents() {
         [Int]$BottomTopRow  = 6
-        [Int]$BottomEndRow  = $this.LayoutHeight - 2
+        [Int]$BottomEndRow  = $this.LayoutHeight - 1
         [Int]$LeftPaneWidth = [Int][Math]::Floor($this.LayoutWidth / 2)
 
         $this.PlaybackPanel        = [UIPlaybackControlPanel]::new($this.LayoutWidth)
@@ -303,8 +301,9 @@ Class BoomboxCore : AppCore {
         $this.PathModal            = [UIPathInputModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.EqualizerModal       = [UIEqualizerModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.ThemeModal           = [UIThemeModal]::new($this.LayoutWidth, $this.LayoutHeight)
+        $this.HelpModal            = [UIHelpModal]::new($this.LayoutWidth, $this.LayoutHeight)
         $this.NoticeModal          = [UINoticeModal]::new($this.LayoutWidth, $this.LayoutHeight)
-        $this.VisualizerCanvas     = [UIVisualizerCanvas]::new($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 2)), 1, 1)
+        $this.VisualizerCanvas     = [UIVisualizerCanvas]::new($this.LayoutWidth, [Math]::Max(6, ($this.LayoutHeight - 1)), 1, 1)
         $this.Visualizers          = [List[UIVisualizerBase]]::new()
         $this.Visualizers.Add([UIVisualizerSpectrum]::new())
         $this.Visualizers.Add([UIVisualizerMirror]::new())
@@ -312,9 +311,8 @@ Class BoomboxCore : AppCore {
         $this.Visualizers.Add([UIVisualizerRadialPulse]::new())
         $this.Visualizers.Add([UIVisualizerWaterfall]::new())
         $this.ActiveVisualizerIndex = 0
-        $this.VisualizerTrackLabel  = [UILabel]::new('', [ATCoordinates]::new(($this.LayoutHeight - 1), 2), [ColorLibrary]::BoomboxVizTrackLabel, [Math]::Max(20, ($this.LayoutWidth - 2)))
-        $this.VisualizerHintLabel   = [UILabel]::new('[Tab] Next Viz [V] Exit [Spc] Play/Pause [N/P] Track [+/-] Vol [M] Mute [B] Toast', [ATCoordinates]::new($this.LayoutHeight, 2), [ColorLibrary]::BoomboxVizHint, [Math]::Max(20, ($this.LayoutWidth - 2)))
-        $this.FooterPanel           = [UIStatusFooterPanel]::new(($this.LayoutHeight - 1), $this.LayoutWidth)
+        $this.VisualizerTrackLabel  = [UILabel]::new('', [ATCoordinates]::new($this.LayoutHeight, 2), [ColorLibrary]::BoomboxVizTrackLabel, [Math]::Max(20, ($this.LayoutWidth - 2)))
+        $this.FooterPanel           = [UIStatusFooterPanel]::new($this.LayoutHeight, $this.LayoutWidth)
 
         [BoomboxCore]$SelfCore = $this
 
@@ -513,7 +511,7 @@ Class BoomboxCore : AppCore {
 
             If($null -NE $PreviewTheme) {
                 $SelfCore.ThemeService.ApplyTheme($PreviewTheme, $false)
-                $SelfCore.FooterPanel.SetStatus("Theme preview: $($PreviewTheme.Name) (Enter to apply, Esc to cancel)")
+                $SelfCore.FooterPanel.SetStatus("Theme preview: $($PreviewTheme.Name)")
             }
         }.GetNewClosure()
 
@@ -544,6 +542,15 @@ Class BoomboxCore : AppCore {
             $SelfCore.FooterPanel.SetStatus("Theme change cancelled ($($SelfCore.ThemeService.ActiveThemeName))")
             $SelfCore.AppState.Trigger('CloseThemeSelector', [Context]::new(@{ [SMState]::ContextBoomboxCore = $SelfCore }))
         }.GetNewClosure()
+
+        $this.HelpModal.OnCloseRequested = {
+            Param(
+                [Context]$ActionContext
+            )
+
+            $SelfCore.FooterPanel.SetStatus('Ready')
+            $SelfCore.AppState.Trigger('CloseHelp', [Context]::new(@{ [SMState]::ContextBoomboxCore = $SelfCore }))
+        }.GetNewClosure()
     }
 
     [Void]RefreshAllForThemeChange() {
@@ -564,11 +571,11 @@ Class BoomboxCore : AppCore {
         $this.PathModal.SetAllElementsDirty()
         $this.EqualizerModal.SetAllElementsDirty()
         $this.ThemeModal.MarkAllDirtyForThemeChange()
+        $this.HelpModal.MarkAllDirtyForThemeChange()
         $this.NoticeModal.SetAllElementsDirty()
         $this.FooterPanel.SetAllElementsDirty()
 
         $this.VisualizerTrackLabel.Dirty = $true
-        $this.VisualizerHintLabel.Dirty  = $true
         $this.PendingScreenClear         = $true
     }
 
@@ -582,6 +589,7 @@ Class BoomboxCore : AppCore {
             [PBStatePlaylistSavePrompt]::new(),
             [PBStateEqualizer]::new(),
             [PBStateThemeSelector]::new(),
+            [PBStateHelp]::new(),
             [PBStateNoticeModal]::new(),
             [PBStateVisualizer]::new(),
             [PBStateBufferTooSmall]::new(),
@@ -600,6 +608,8 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStateEqualizer', 'CloseEqualizer', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenThemeSelector', 'PBStateThemeSelector'),
             [SMTransition]::new('PBStateThemeSelector', 'CloseThemeSelector', 'PBStateMainPlayer'),
+            [SMTransition]::new('PBStateMainPlayer', 'OpenHelp', 'PBStateHelp'),
+            [SMTransition]::new('PBStateHelp', 'CloseHelp', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateMainPlayer', 'OpenNoticeModal', 'PBStateNoticeModal'),
             [SMTransition]::new('PBStateNoticeModal', 'CloseNoticeModal', 'PBStateMainPlayer'),
             [SMTransition]::new('PBStateNoticeModal', 'Quit', 'PBStateShutdown'),
@@ -613,6 +623,7 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStatePlaylistSavePrompt', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateEqualizer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateThemeSelector', 'BufferTooSmall', 'PBStateBufferTooSmall'),
+            [SMTransition]::new('PBStateHelp', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateNoticeModal', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateVisualizer', 'BufferTooSmall', 'PBStateBufferTooSmall'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateMainPlayer', 'PBStateMainPlayer'),
@@ -620,6 +631,7 @@ Class BoomboxCore : AppCore {
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStatePlaylistSavePrompt', 'PBStatePlaylistSavePrompt'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateEqualizer', 'PBStateEqualizer'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateThemeSelector', 'PBStateThemeSelector'),
+            [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateHelp', 'PBStateHelp'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateNoticeModal', 'PBStateNoticeModal'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Resume_PBStateVisualizer', 'PBStateVisualizer'),
             [SMTransition]::new('PBStateBufferTooSmall', 'Quit', 'PBStateShutdown')

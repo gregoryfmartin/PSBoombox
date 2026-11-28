@@ -62,7 +62,7 @@ Class PBStateThemeSelector : SMState {
             $Core.PendingScreenClear = $true
 
             $Core.ThemeModal.OpenForTheme($Core.ThemeService, $SelfState.OriginalTheme, $Context)
-            $Core.FooterPanel.SetStatus("Themes: previewing '$($Core.ThemeService.ActiveThemeName)' (Enter to apply, Esc to cancel)")
+            $Core.FooterPanel.SetStatus("Themes: previewing '$($Core.ThemeService.ActiveThemeName)'")
         }
 
         $this.OnExit = {

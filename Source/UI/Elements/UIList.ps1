@@ -18,6 +18,8 @@ Set-StrictMode -Version Latest
 
 Class UIList : UIBase {
     Static [Int]$DefaultVisibleItemCount = 10
+    Static [String]$ScrollUpGlyph        = "`u{25B2}"
+    Static [String]$ScrollDownGlyph      = "`u{25BC}"
 
     [Int]$SelectedIndex
     [Int]$ViewportOffset
@@ -145,13 +147,39 @@ Class UIList : UIBase {
         })
     }
 
+    [Boolean]HasOverflow() {
+        Return ($this.Items.Count -GT [Math]::Max(1, $this.VisibleItemCount))
+    }
+
+    [Boolean]CanScrollUp() {
+        Return ($this.ViewportOffset -GT 0)
+    }
+
+    [Boolean]CanScrollDown() {
+        Return (($this.ViewportOffset + [Math]::Max(1, $this.VisibleItemCount)) -LT $this.Items.Count)
+    }
+
+    [Int]GetEffectiveItemWidth() {
+        If($this.MaxDisplayWidth -LE 0) {
+            Return 0
+        }
+
+        If(($this.HasOverflow() -EQ $true) -AND ($this.MaxDisplayWidth -GT 4)) {
+            Return ($this.MaxDisplayWidth - 2)
+        }
+
+        Return $this.MaxDisplayWidth
+    }
+
     [Void]SetMaxDisplayWidth(
         [Int]$Width
     ) {
         $this.MaxDisplayWidth = [Math]::Max(0, $Width)
 
+        [Int]$EffectiveWidth = $this.GetEffectiveItemWidth()
+
         Foreach($Item in $this.Items) {
-            $Item.MaxDisplayWidth = $this.MaxDisplayWidth
+            $Item.MaxDisplayWidth = $EffectiveWidth
         }
 
         $this.LayoutItems()
@@ -169,8 +197,10 @@ Class UIList : UIBase {
         $this.VisibleItemCount = ($VisibleItemCount -GT 0) ? $VisibleItemCount : [UIList]::DefaultVisibleItemCount
         $this.MaxDisplayWidth  = [Math]::Max(0, $MaxDisplayWidth)
 
+        [Int]$EffectiveWidth = $this.GetEffectiveItemWidth()
+
         Foreach($Item in $this.Items) {
-            $Item.MaxDisplayWidth = $this.MaxDisplayWidth
+            $Item.MaxDisplayWidth = $EffectiveWidth
         }
 
         $this.LayoutItems()
@@ -186,9 +216,9 @@ Class UIList : UIBase {
             Return
         }
 
-        $Item.MaxDisplayWidth = $this.MaxDisplayWidth
-
         $this.Items.Add($Item)
+
+        $Item.MaxDisplayWidth = $this.GetEffectiveItemWidth()
 
         If($Item.LabelText.Length -GT $this.MaxItemWidth) {
             $this.MaxItemWidth = $Item.LabelText.Length
@@ -284,17 +314,18 @@ Class UIList : UIBase {
             }
         }
 
-        [Int]$MaxOffset      = [Math]::Max(0, ($this.Items.Count - $EffectiveVisibleCount))
-        $this.ViewportOffset = [Math]::Clamp($this.ViewportOffset, 0, $MaxOffset)
-        [Int]$EndIdx         = $this.GetVisibleEndIndex()
+        [Int]$MaxOffset          = [Math]::Max(0, ($this.Items.Count - $EffectiveVisibleCount))
+        $this.ViewportOffset     = [Math]::Clamp($this.ViewportOffset, 0, $MaxOffset)
+        [Int]$EndIdx             = $this.GetVisibleEndIndex()
+        [Int]$EffectiveItemWidth = $this.GetEffectiveItemWidth()
 
         For([Int]$Idx = $this.ViewportOffset; $Idx -LE $EndIdx; $Idx++) {
             [UIListItem]$VisibleItem     = $this.Items[$Idx]
             [Int]$VisualRow              = $this.DrawCoordinates.Row.Value + ($Idx - $this.ViewportOffset)
             $VisibleItem.DrawCoordinates = [ATCoordinates]::new($VisualRow, $this.DrawCoordinates.Column.Value)
-            $VisibleItem.MaxDisplayWidth = $this.MaxDisplayWidth
+            $VisibleItem.MaxDisplayWidth = $EffectiveItemWidth
 
-            If($this.MaxDisplayWidth -GT 0) {
+            If($EffectiveItemWidth -GT 0) {
                 $VisibleItem.ApplyVisuals()
             } Else {
                 $VisibleItem.SetBlankSize($this.MaxItemWidth + 2)
@@ -572,6 +603,48 @@ Class UIList : UIBase {
         Return "$($Blanks.ToAnsiControlSequenceString())"
     }
 
+    [String]BuildScrollIndicatorString() {
+        If(($this.HasOverflow() -EQ $false) -OR ($this.MaxDisplayWidth -LE 4)) {
+            Return ''
+        }
+
+        [Int]$EffectiveVisibleCount   = [Math]::Max(1, $this.VisibleItemCount)
+        [Int]$GutterCol               = $this.DrawCoordinates.Column.Value + $this.MaxDisplayWidth - 2
+        [Boolean]$ShowUp              = $this.CanScrollUp()
+        [Boolean]$ShowDown            = $this.CanScrollDown()
+        [TrueColor]$GlyphColor        = ($this.IsActive() -EQ $true) ? [ColorLibrary]::UIListScrollIndicator : [ColorLibrary]::UIListItemInactive
+        [ATStringComposite]$Indicators = [ATStringComposite]::new()
+
+        For([Int]$RowIdx = 0; $RowIdx -LT $EffectiveVisibleCount; $RowIdx++) {
+            [String]$CellText = '  '
+
+            If($EffectiveVisibleCount -EQ 1) {
+                If($ShowDown -EQ $true) {
+                    $CellText = " $([UIList]::ScrollDownGlyph)"
+                } Elseif($ShowUp -EQ $true) {
+                    $CellText = " $([UIList]::ScrollUpGlyph)"
+                }
+            } Elseif(($RowIdx -EQ 0) -AND ($ShowUp -EQ $true)) {
+                $CellText = " $([UIList]::ScrollUpGlyph)"
+            } Elseif(($RowIdx -EQ ($EffectiveVisibleCount - 1)) -AND ($ShowDown -EQ $true)) {
+                $CellText = " $([UIList]::ScrollDownGlyph)"
+            }
+
+            $Indicators.CompositeActual.Add(
+                [ATString]@{
+                    Prefix = [ATStringPrefix]@{
+                        ForegroundColor = [ATForegroundColor24]::new($GlyphColor)
+                        Coordinates     = [ATCoordinates]::new(($this.DrawCoordinates.Row.Value + $RowIdx), $GutterCol)
+                    }
+                    UserData   = "$($CellText)"
+                    UseATReset = $true
+                }
+            )
+        }
+
+        Return "$($Indicators.ToAnsiControlSequenceString())"
+    }
+
     [String]ToAnsiControlSequenceString() {
         [String]$Composite = ''
         [Int]$EndIdx       = $this.GetVisibleEndIndex()
@@ -585,16 +658,22 @@ Class UIList : UIBase {
         }
 
         $Composite += $this.BuildUnusedRowsBlankString($DrawnCount)
+        $Composite += $this.BuildScrollIndicatorString()
 
         Return "$($Composite)"
     }
 
     [Void]Draw() {
-        [Int]$EndIdx     = $this.GetVisibleEndIndex()
-        [Int]$DrawnCount = 0
+        [Int]$EndIdx            = $this.GetVisibleEndIndex()
+        [Int]$DrawnCount        = 0
+        [Boolean]$ForceItemDraw = ($this.Dirty -EQ $true) -OR ($this.ViewportBlankDirty -EQ $true)
 
         If(($this.Items.Count -GT 0) -AND ($EndIdx -GE $this.ViewportOffset)) {
             For([Int]$Idx = $this.ViewportOffset; $Idx -LE $EndIdx; $Idx++) {
+                If($ForceItemDraw -EQ $true) {
+                    $this.Items[$Idx].Dirty = $true
+                }
+
                 $this.Items[$Idx].Draw()
                 $DrawnCount++
             }
@@ -608,6 +687,14 @@ Class UIList : UIBase {
             }
 
             $this.ViewportBlankDirty = $false
+        }
+
+        If($ForceItemDraw -EQ $true) {
+            [String]$ScrollAnsi = $this.BuildScrollIndicatorString()
+
+            If($ScrollAnsi.Length -GT 0) {
+                Write-Host "$($ScrollAnsi)" -NoNewline
+            }
         }
 
         $this.Dirty = $false

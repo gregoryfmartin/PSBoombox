@@ -247,6 +247,13 @@ Class UIThemeService {
         [TrueColor]$Orange  = [TrueColor]::EnsureContrast(([TrueColor]::Blend($Red, $Yellow, 0.50)), $Bg, $Fg, 3.0)
         [TrueColor]$Mint    = [TrueColor]::EnsureContrast(([TrueColor]::Blend($Green, $Cyan, 0.50)), $Bg, $Fg, 3.0)
 
+        [Boolean]$IsDarkTheme   = ([TrueColor]::GetRelativeLuminance($Bg) -LT 0.5)
+        [Double]$SelectBgFactor = ($IsDarkTheme -EQ $true) ? 0.28 : 0.22
+        [Double]$UnfocBgFactor  = ($IsDarkTheme -EQ $true) ? 0.14 : 0.11
+        [TrueColor]$SelectedBg  = [TrueColor]::Blend($Bg, $Cyan, $SelectBgFactor)
+        [TrueColor]$UnfocusedBg = [TrueColor]::Blend($Bg, $Fg, $UnfocBgFactor)
+        [TrueColor]$SelectedFg  = [TrueColor]::EnsureContrast($Fg, $SelectedBg, $Fg, 4.5)
+
         [ColorLibrary]::ThemeBackground.CopyFrom($Bg)
         [ColorLibrary]::WindowBorderActiveColor.CopyFrom($BorderActive)
         [ColorLibrary]::WindowBorderInactiveColor.CopyFrom($Dim)
@@ -285,8 +292,11 @@ Class UIThemeService {
 
         [ColorLibrary]::UIListItemActive.CopyFrom($Fg)
         [ColorLibrary]::UIListItemInactive.CopyFrom($Dim)
-        [ColorLibrary]::UIListItemSelected.CopyFrom($Yellow)
+        [ColorLibrary]::UIListItemSelected.CopyFrom($SelectedFg)
+        [ColorLibrary]::UIListItemSelectedBg.CopyFrom($SelectedBg)
+        [ColorLibrary]::UIListItemSelectedUnfocusedBg.CopyFrom($UnfocusedBg)
         [ColorLibrary]::UIListItemHasFocus.CopyFrom($Mint)
+        [ColorLibrary]::UIListScrollIndicator.CopyFrom($Cyan)
 
         [ColorLibrary]::UINumberSpinnerActive.CopyFrom($Fg)
         [ColorLibrary]::UINumberSpinnerInactive.CopyFrom($Dim)

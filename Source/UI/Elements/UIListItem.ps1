@@ -16,9 +16,7 @@ Set-StrictMode -Version Latest
 ###############################################################################
 
 Class UIListItem : UIBase {
-    Static [String]$SelectionIndicator = "`u{2771}"
-    Static [String]$PlayingIndicator   = "`u{25B6}"
-    Static [String]$UnselectedPrefix   = '  '
+    Static [String]$PlayingIndicator = "`u{25B6}"
 
     [String]$LabelText
     [Object]$Tag
@@ -158,35 +156,54 @@ Class UIListItem : UIBase {
     [TrueColor]ResolveForegroundColor() {
         If($this.IsActive() -EQ $false) {
             Return [ColorLibrary]::UIListItemInactive
-        } Elseif(($this.IsSelected -EQ $true) -AND ($this.IsFocused() -EQ $true)) {
-            Return [ColorLibrary]::UIListItemSelected
-        } Elseif($this.IsPlaying -EQ $true) {
-            Return [ColorLibrary]::BoomboxNowPlayingEntry
-        } Elseif($this.IsSelected -EQ $true) {
-            Return [ColorLibrary]::UIListItemHasFocus
-        } Elseif($null -NE $this.CustomActiveColor) {
-            Return $this.CustomActiveColor
-        } Elseif($this.IsFocused() -EQ $true) {
-            Return [ColorLibrary]::UIListItemHasFocus
         }
 
-        Return [ColorLibrary]::UIListItemActive
+        [TrueColor]$BaseFg = [ColorLibrary]::UIListItemActive
+
+        If($this.IsPlaying -EQ $true) {
+            $BaseFg = [ColorLibrary]::BoomboxNowPlayingEntry
+        } Elseif($null -NE $this.CustomActiveColor) {
+            $BaseFg = $this.CustomActiveColor
+        } Elseif(($this.IsSelected -EQ $true) -AND ($this.IsFocused() -EQ $true)) {
+            $BaseFg = [ColorLibrary]::UIListItemSelected
+        }
+
+        If($this.IsSelected -EQ $true) {
+            [TrueColor]$HighlightBg = ($this.IsFocused() -EQ $true) ? [ColorLibrary]::UIListItemSelectedBg : [ColorLibrary]::UIListItemSelectedUnfocusedBg
+
+            Return [TrueColor]::EnsureContrast($BaseFg, $HighlightBg, [ColorLibrary]::TextActiveColor, 4.5)
+        }
+
+        Return $BaseFg
+    }
+
+    [ATBackgroundColor24]ResolveBackgroundColor() {
+        If(($this.IsActive() -EQ $true) -AND ($this.IsSelected -EQ $true)) {
+            If($this.IsFocused() -EQ $true) {
+                Return [ATBackgroundColor24]::new([ColorLibrary]::UIListItemSelectedBg)
+            }
+
+            Return [ATBackgroundColor24]::new([ColorLibrary]::UIListItemSelectedUnfocusedBg)
+        }
+
+        Return [ATBackgroundColor24None]::new()
     }
 
     [String]BuildPrefixGlyph() {
-        If(($this.IsSelected -EQ $true) -AND ($this.IsPlaying -EQ $true)) {
-            Return "$([UIListItem]::SelectionIndicator)$([UIListItem]::PlayingIndicator)"
-        } Elseif($this.IsSelected -EQ $true) {
-            Return "$([UIListItem]::SelectionIndicator) "
-        } Elseif($this.IsPlaying -EQ $true) {
+        If($this.IsPlaying -EQ $true) {
             Return "$([UIListItem]::PlayingIndicator) "
         }
 
-        Return [UIListItem]::UnselectedPrefix
+        Return ''
+    }
+
+    [Void]RefreshColors() {
+        $this.Prefix.ForegroundColor = [ATForegroundColor24]::new($this.ResolveForegroundColor())
+        $this.Prefix.BackgroundColor = $this.ResolveBackgroundColor()
     }
 
     [Void]ApplyVisuals() {
-        $this.Prefix.ForegroundColor = [ATForegroundColor24]::new($this.ResolveForegroundColor())
+        $this.RefreshColors()
 
         [String]$PrefixGlyph = $this.BuildPrefixGlyph()
         [String]$DisplayText = "$($PrefixGlyph)$($this.LabelText)"
@@ -203,6 +220,7 @@ Class UIListItem : UIBase {
     }
 
     [String]ToAnsiControlSequenceString() {
+        $this.RefreshColors()
         $this.Prefix.Coordinates = [ATCoordinates]::new($this.DrawCoordinates)
 
         Return "$(([UIBase]$this).ToAnsiControlSequenceString())"

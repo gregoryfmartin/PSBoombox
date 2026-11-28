@@ -31,7 +31,6 @@ Class UIEqualizerModal : UIPanel {
     [UIButton]$CancelSaveButton
     [UIVerticalSlider]$PreampSlider
     [UIVerticalSlider[]]$BandSliders
-    [UILabel]$HintLabel
     [Boolean]$IsNamingPreset
     [Boolean]$NamingRowClearDirty
     [Int]$LastFocusedSliderKey
@@ -51,7 +50,7 @@ Class UIEqualizerModal : UIPanel {
         [Int]$LayoutHeight
     ) : base() {
         [Int]$ModalWidth  = [Math]::Clamp(($LayoutWidth - 2), 76, 78)
-        [Int]$ModalHeight = 16
+        [Int]$ModalHeight = 15
         [Int]$TopRow      = [Math]::Max(3, [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2))
         [Int]$LeftCol     = [Math]::Max(2, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
 
@@ -82,7 +81,6 @@ Class UIEqualizerModal : UIPanel {
         [Int]$StatusRow              = $TopRow + 2
         [Int]$DividerRow             = $TopRow + 3
         [Int]$SliderTopRow           = $TopRow + 4
-        [Int]$HintRow                = $TopRow + 15
 
         $this.ToggleEqButton = [UIButton]::new('EQ: Off', [ATCoordinates]::new($ControlRow, ($LeftCol + 2)), {
             Param(
@@ -246,13 +244,6 @@ Class UIEqualizerModal : UIPanel {
             $this.UiElementListing[(11 + $BIdx)] = $Slider
         }
 
-        $this.HintLabel = [UILabel]::new(
-            '[</>] Band [^/v] +/-1dB [0] Zero [T] EQ [P] Preset [S] Save [X] Del [Esc]',
-            [ATCoordinates]::new($HintRow, ($LeftCol + 2)),
-            [ColorLibrary]::BoomboxFooterHint,
-            $InnerWidth
-        )
-
         $this.UiElementListing[1]  = $this.ToggleEqButton
         $this.UiElementListing[2]  = $this.PresetButton
         $this.UiElementListing[3]  = $this.SavePresetButton
@@ -262,7 +253,6 @@ Class UIEqualizerModal : UIPanel {
         $this.UiElementListing[7]  = $this.StatusLineLabel
         $this.UiElementListing[8]  = $this.DividerRuleLabel
         $this.UiElementListing[10] = $this.PreampSlider
-        $this.UiElementListing[50] = $this.HintLabel
     }
 
     [Void]Resize(
@@ -270,7 +260,7 @@ Class UIEqualizerModal : UIPanel {
         [Int]$LayoutHeight
     ) {
         [Int]$ModalWidth  = [Math]::Clamp(($LayoutWidth - 2), 76, 78)
-        [Int]$ModalHeight = 16
+        [Int]$ModalHeight = 15
         [Int]$TopRow      = [Math]::Max(3, [Int][Math]::Floor(($LayoutHeight - $ModalHeight) / 2))
         [Int]$LeftCol     = [Math]::Max(2, [Int][Math]::Floor(($LayoutWidth - $ModalWidth) / 2))
 
@@ -281,7 +271,6 @@ Class UIEqualizerModal : UIPanel {
         [Int]$StatusRow    = $TopRow + 2
         [Int]$DividerRow   = $TopRow + 3
         [Int]$SliderTopRow = $TopRow + 4
-        [Int]$HintRow      = $TopRow + 15
 
         $this.ToggleEqButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 2)))
         $this.PresetButton.SetCoordinates([ATCoordinates]::new($ControlRow, ($LeftCol + 14)))
@@ -318,8 +307,6 @@ Class UIEqualizerModal : UIPanel {
 
             $this.BandSliders[$BIdx].SetCoordinates([ATCoordinates]::new($SliderTopRow, $BandCol))
         }
-
-        $this.HintLabel.SetLayout([ATCoordinates]::new($HintRow, ($LeftCol + 2)), $InnerWidth)
 
         $this.InteriorClearDirty  = $true
         $this.NamingRowClearDirty = $true
@@ -402,9 +389,6 @@ Class UIEqualizerModal : UIPanel {
         $this.PresetNameInput.Dirty   = $true
         $this.ConfirmSaveButton.Dirty = $true
         $this.CancelSaveButton.Dirty  = $true
-
-        $this.HintLabel.SetActiveColor([ColorLibrary]::BoomboxFooterHint)
-        $this.HintLabel.SetText('[Enter] Save Preset  [Tab] Next Control  [Esc] Cancel')
     }
 
     [Void]ExitNamingMode(
@@ -431,8 +415,6 @@ Class UIEqualizerModal : UIPanel {
         $this.ConfirmSaveButton.Deactivate($Context)
         $this.CancelSaveButton.Deactivate($Context)
 
-        $this.HintLabel.SetActiveColor([ColorLibrary]::BoomboxFooterHint)
-        $this.HintLabel.SetText('[</>] Band [^/v] +/-1dB [0] Zero [T] EQ [P] Preset [S] Save [X] Del [Esc]')
         $this.StatusLineLabel.Dirty = $true
 
         If(($null -NE $StatusMsg) -AND ($StatusMsg.Length -GT 0)) {
@@ -456,10 +438,6 @@ Class UIEqualizerModal : UIPanel {
             If(($null -NE $Result) -AND ($Result.Success -EQ $true)) {
                 $this.ExitNamingMode($Context, $Result.Message)
             } Else {
-                [String]$ErrText = (($null -NE $Result) -AND ($Result.ContainsKey('Message') -EQ $true)) ? [String]$Result.Message : 'Save failed.'
-
-                $this.HintLabel.SetActiveColor([ColorLibrary]::BoomboxFooterError)
-                $this.HintLabel.SetText($ErrText)
                 $this.PresetNameInput.SetTextAndMoveEnd($EnteredName)
             }
         }

@@ -10,14 +10,13 @@ Set-StrictMode -Version Latest
 #
 # UI STATUS FOOTER PANEL
 #
-# BORDERLESS TWO-LINE FOOTER DISPLAYING STATUS/ERROR MESSAGES AND KEYBINDING
-# HINTS AT THE BOTTOM OF THE TERMINAL.
+# BORDERLESS SINGLE-LINE FOOTER DISPLAYING STATUS/ERROR MESSAGES AT THE BOTTOM
+# OF THE TERMINAL.
 #
 ###############################################################################
 
 Class UIStatusFooterPanel : UIPanel {
     [UILabel]$StatusLabel
-    [UILabel]$HintLabel
     [Int]$MaxTextWidth
 
     UIStatusFooterPanel(
@@ -35,16 +34,7 @@ Class UIStatusFooterPanel : UIPanel {
             $this.MaxTextWidth
         )
 
-        [String]$HintText = '[Tab] [Spc] Play [A] Add [G] Dir [W] Save [E] EQ [V] Viz [T] Theme [B] Toast [Q] Quit'
-        $this.HintLabel   = [UILabel]::new(
-            $HintText,
-            [ATCoordinates]::new(($StartRow + 1), 2),
-            [ColorLibrary]::BoomboxFooterHint,
-            $this.MaxTextWidth
-        )
-
         $this.UiElementListing[0] = $this.StatusLabel
-        $this.UiElementListing[1] = $this.HintLabel
     }
 
     [Void]Resize(
@@ -54,7 +44,6 @@ Class UIStatusFooterPanel : UIPanel {
         $this.MaxTextWidth = [Math]::Max(20, ($LayoutWidth - 2))
 
         $this.StatusLabel.SetLayout([ATCoordinates]::new($StartRow, 2), $this.MaxTextWidth)
-        $this.HintLabel.SetLayout([ATCoordinates]::new(($StartRow + 1), 2), $this.MaxTextWidth)
         $this.SetAllElementsDirty()
     }
 
@@ -70,11 +59,5 @@ Class UIStatusFooterPanel : UIPanel {
     ) {
         $this.StatusLabel.SetActiveColor([ColorLibrary]::BoomboxFooterError)
         $this.StatusLabel.SetText("Error : $($Message)")
-    }
-
-    [Void]SetHint(
-        [String]$HintText
-    ) {
-        $this.HintLabel.SetText($HintText)
     }
 }

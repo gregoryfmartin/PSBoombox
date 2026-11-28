@@ -107,6 +107,13 @@ Class PBStateMainPlayer : SMState {
                         Break
                     }
 
+                    If($KeyInfo.Key -EQ [ConsoleKey]::F1) {
+                        $Core.AppState.Trigger('OpenHelp', $Context)
+                        $DidTransition = $true
+
+                        Break
+                    }
+
                     If($KeyInfo.Key -EQ [ConsoleKey]::V) {
                         $Core.TryOpenVisualizer($Context)
 
